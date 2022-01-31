@@ -376,16 +376,16 @@ class Analysis:
         # plt.tight_layout()
         # plt.show()
         ###### moving window ##########
-        # self.NDVI_CO2_VPD()
+        self.NDVI_CO2_VPD()
 
 
         ############ MATRIX ##############
-        self.matrix_trend_moving_window()
-
-        season = 'early'
-        season = 'peak'
-        season = 'late'
-        self.plot_partial_corr_moving_window(season)
+        # self.matrix_trend_moving_window()
+        #
+        # season = 'early'
+        # season = 'peak'
+        # season = 'late'
+        # self.plot_partial_corr_moving_window(season)
         ############ MATRIX ##############
 
         pass
@@ -1003,24 +1003,104 @@ class Analysis:
 
 
     def NDVI_CO2_VPD(self):
+        period = 'early'
+        LAI_var = f'{period}_GEE_AVHRR_LAI'
+        co2_var = f'{period}_CO2'
+        vpd_var = f'{period}_VPD'
         df = self.__load_df()
         year_interval = 10
         year_list = np.arange(global_start_year,2015,year_interval)
         year_list = list(year_list)
         year_list.append(2015)
 
-        for i in range(len(year_list)):
-            if i + 1 >= len(year_list):
-                continue
-            start = year_list[i]
-            end = year_list[i+1]
-            pick_index = list(range(start,end+1))
-            for i,row in df.iterrows():
-                print(row)
-                exit()
-                pass
 
-            print(pick_index)
+
+        for year in range(len(year_list)):
+            if year + 1 >= len(year_list):
+                continue
+            start = year_list[year]
+            end = year_list[year+1]
+            pick_index = list(range(start,end+1))
+            pick_index = np.array(pick_index) - global_start_year
+            # print(pick_index)
+            lai_list = []
+            co2_list = []
+            vpd_list = []
+            for i,row in df.iterrows():
+                lai = row[LAI_var]
+                co2 = row[co2_var]
+                vpd = row[vpd_var]
+                if type(lai) == float:
+                    continue
+                if type(co2) == float:
+                    continue
+                if type(vpd) == float:
+                    continue
+                picked_lai = T.pick_vals_from_1darray(lai,pick_index)
+                picked_co2 = T.pick_vals_from_1darray(co2,pick_index)
+                picked_vpd = T.pick_vals_from_1darray(vpd,pick_index)
+                lai_mean = np.nanmean(picked_lai)
+                co2_mean = np.nanmean(picked_co2)
+                vpd_mean = np.nanmean(picked_vpd)
+
+                lai_list.append(lai_mean)
+                co2_list.append(co2_mean)
+                vpd_list.append(vpd_mean)
+            df_new = pd.DataFrame()
+            df_new['lai'] = lai_list
+            df_new['co2'] = co2_list
+            df_new['vpd'] = vpd_list
+            df_new = df_new.dropna()
+            n = 20
+            vpd_bin = np.linspace(0.2,3,n)
+            co2_bin = np.linspace(340,420,n)
+            #
+            x_list = []
+            y_list = []
+            for i in range(len(vpd_bin)):
+                if i + 1 >= len(vpd_bin):
+                    continue
+                df_new_selected = df_new[df_new['vpd']>vpd_bin[i]]
+                df_new_selected = df_new_selected[df_new_selected['vpd']<vpd_bin[i+1]]
+                lai = df_new_selected['lai']
+                vpd = df_new_selected['vpd']
+
+                lai_mean = np.nanmean(lai)
+                vpd_mean = np.nanmean(vpd)
+
+                x_list.append(vpd_mean)
+                y_list.append(lai_mean)
+            # print(df_new)
+            # exit()
+            plt.plot(x_list,y_list,label=year)
+
+            # x_list = []
+            # y_list = []
+            # for i in range(len(co2_bin)):
+            #     if i + 1 >= len(co2_bin):
+            #         continue
+            #     df_new_selected = df_new[df_new['co2'] > co2_bin[i]]
+            #     df_new_selected = df_new_selected[df_new_selected['co2'] < co2_bin[i + 1]]
+            #     lai = df_new_selected['lai']
+            #     vpd = df_new_selected['co2']
+            #
+            #     lai_mean = np.nanmean(lai)
+            #     vpd_mean = np.nanmean(vpd)
+            #
+            #     x_list.append(vpd_mean)
+            #     y_list.append(lai_mean)
+            # # print(df_new)
+            # # exit()
+            # plt.plot(x_list, y_list, label=year)
+
+
+        plt.legend()
+        plt.show()
+            # lai_list_mean = np.nanmean(lai_list)
+            # co2_list_mean = np.nanmean(co2_list)
+            # vpd_list_mean = np.nanmean(vpd_list)
+            # plt.show()
+
         # print(year_list)
         pass
 
@@ -1255,8 +1335,6 @@ class Analysis:
             # 'LAI',
             # 'NIRv',
         ]
-        if not season == 'late':
-            return
         lc_list = ['Evergreen', 'Deciduous', 'Shrubs', 'Grass']
         HI_class_list = ['Humid', 'Non Humid']
         matrix = []
