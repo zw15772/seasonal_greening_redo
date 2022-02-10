@@ -385,24 +385,25 @@ class Analysis:
         # # T.mk_dir(outdir)
         # # y_variable = 'GIMMS_NDVI'
         # # # y_variable = 'GEE_AVHRR_LAI'
-        # y_variable = 'CCI_SM'
+        y_variable = 'CCI_SM'
         # # # y_variable = 'VPD'
-        # humid = 'Non Humid'
+        humid = 'Non Humid'
         # # humid = 'Humid'
-        # df = self.__load_df()
-        # for season in global_season_dic:
-        # #     # self.greening_slide_trend_time_series(season,y_variable,humid)
-        # #     self.trend_area_ratio_moving_window(df,season,y_variable,humid)
+        df = self.__load_df()
+        for season in global_season_dic:
+            self.greening_slide_trend_time_series(season,y_variable,humid)
+            # self.trend_area_ratio_moving_window(df,season,y_variable,humid)
         # #     plt.twinx()
         #     self.greening_slide_mean_time_series(season,y_variable,humid)
-        # #     plt.legend()
-        #     plt.tight_layout()
         #     plt.savefig(join(outdir,f'{season}_{y_variable}_{humid}.pdf'))
         #     plt.close()
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
         ###### moving window ##########
         # self.NDVI_CO2_VPD()
         # self.NDVI_CO2_VPD_corr_line()
-        self.NDVI_CO2_VPD_corr_pdf_max_vpd_year()
+        # self.NDVI_CO2_VPD_corr_pdf_max_vpd_year()
         # self.NDVI_CO2_VPD_corr_pdf_annual()
 
 
@@ -575,53 +576,18 @@ class Analysis:
             'peak':'r',
             'late':'b',
         }
-        df = self.__load_df()
-        df = df[df['HI_class']==humid]
+        f = join(self.this_class_arr,f'save_trend_moving_window/{season}_{y_variable}.df')
+        df = T.load_df(f)
+        df_all = df[df['HI_class']==humid]
         # df
         K = KDE_plot()
         val_length = 34
-        # season = 'early'
-        # season = 'late'
-        # y_var = f'{season}_GEE_AVHRR_LAI'
         y_var = f'{season}_{y_variable}'
-        # y_var = 'peak_GEE_AVHRR_LAI'
-        # y_var = 'late_GEE_AVHRR_LAI'
-        df_all = pd.DataFrame()
         window_list = []
-        for w in range(val_length):
-            if w + self.n >= val_length:
-                continue
-            pick_index = list(range(w, w + self.n))
-            window_mean_val_dic = {}
-            for i, row in tqdm(df.iterrows(), total=len(df), desc=str(w)):
-                pix = row.pix
-                val_dic = {}
-                vals = row[y_var]
-                if type(vals) == float:
-                    continue
-                try:
-                    picked_vals = T.pick_vals_from_1darray(vals, pick_index)
-                except:
-                    picked_vals = np.nan
-                # picked_vals_mean = np.nanmean(picked_vals)  # mean
-                try:
-                    picked_vals_mean,b,r = K.linefit(list(range(len(picked_vals))),picked_vals)  # trend
-                except:
-                    picked_vals_mean = np.nan
-                val_dic[y_var] = picked_vals_mean
-                window_mean_val_dic[pix] = val_dic
-            window_list.append(f'{w}')
-            df_j = T.dic_to_df(window_mean_val_dic,'pix')
-            colomns = df_j.columns
-            df_new = pd.DataFrame()
-            df_new['pix'] = df_j['pix']
-            for col in colomns:
-                if col == 'pix':
-                    continue
-                new_col = f'{w}_{col}'
-                df_new[new_col] = df_j[col]
-            df_all[df_new.columns] = df_new[df_new.columns]
-        del df
+        for col in df_all:
+            if f'{y_variable}' in str(col):
+                window = col.split('_')[0]
+                window_list.append(window)
         year_dic = {
             'year': [],
             'pix': [],
