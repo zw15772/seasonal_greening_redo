@@ -1,7 +1,7 @@
 # coding=utf-8
 import zipfile
 from __init__ import *
-import ee
+# import ee
 
 global_start_year = 1982
 global_season_dic = {

@@ -29,7 +29,7 @@ import copy
 import scipy
 import sklearn
 import random
-import h5py
+# import h5py
 from netCDF4 import Dataset
 import shutil
 import requests
@@ -61,19 +61,10 @@ from matplotlib.colors import LogNorm
 import scipy.io
 from scipy.stats import kruskal
 import psutil
-import xgboost as xgb
-from xgboost import XGBRegressor
-from xgboost import XGBClassifier
-from pyhdf.SD import SD, SDC
-# import xarray as xr
-# import pingouin
-from matplotlib.colors import LinearSegmentedColormap
-from climate_indices import compute
-from climate_indices import indices
-import rpy2
 
-this_root = '/Volumes/NVME2T/greening_project_redo/'
-# this_root = '/Users/wenzhang/Desktop/'
+
+# this_root = '/Volumes/NVME2T/greening_project_redo/'
+this_root = '/Volumes/SSD_sumsang/project_greening_redo/'
 data_root = this_root + 'data/'
 results_root = this_root + 'results/'
 temporary_root = this_root + 'temporary/'

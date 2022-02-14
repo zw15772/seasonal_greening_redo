@@ -12,17 +12,17 @@ class Dataframe:
     def __init__(self):
         self.this_class_arr = join(results_root_main_flow,'arr/Dataframe/')
         self.dff = self.this_class_arr + 'dataframe.df'
-        self.P_PET_fdir = '/Volumes/NVME2T/wen_proj/20220111/aridity_P_PET_dic'
+        self.P_PET_fdir =data_root+ 'aridity_P_PET_dic/'
         T.mk_dir(self.this_class_arr,force=True)
 
     def run(self):
         df = self.__gen_df_init()
         # df = self.add_data(df)
         # df = self.add_lon_lat_to_df(df)
-        # df = self.add_Humid_nonhumid(df)
+        df = self.add_Humid_nonhumid(df)
         # df = self.add_ly_NDVI(df)
         # df = self.add_GEE_LAI(df)
-        df = self.add_lc(df)
+        # df = self.add_lc(df)
         T.save_df(df, self.dff)
         T.df_to_excel(df, self.dff, random=False)
 
@@ -161,8 +161,9 @@ class Dataframe:
         return dic_long_term
     def add_Humid_nonhumid(self,df):
         P_PET_dic_reclass = self.P_PET_reclass()
-        df = T.add_spatial_dic_to_df(df,P_PET_dic_reclass,'HI_class')
-        df.loc[df['HI_class'] != 'Humid', ['HI_class']] = 'Non Humid'
+        df = T.add_spatial_dic_to_df(df,P_PET_dic_reclass,'HI_reclass')
+        df = T.add_spatial_dic_to_df(df, P_PET_dic_reclass, 'HI_class')
+        df.loc[df['HI_reclass'] != 'Humid', ['HI_reclass']] = 'Non Humid'
         return df
 
     def add_lc(self,df):
@@ -385,18 +386,18 @@ class Analysis:
         # # T.mk_dir(outdir)
         # # y_variable = 'GIMMS_NDVI'
         # # # y_variable = 'GEE_AVHRR_LAI'
-        y_variable = 'CCI_SM'
-        # # # y_variable = 'VPD'
-        humid = 'Non Humid'
-        # # humid = 'Humid'
-        df = self.__load_df()
+        y_variable = 'LAI_GIMMS'
+        # # # # y_variable = 'VPD'
+        humid ='Non Humid'
+        # # # humid = 'Humid'
+        #
         for season in global_season_dic:
             self.greening_slide_trend_time_series(season,y_variable,humid)
-            # self.trend_area_ratio_moving_window(df,season,y_variable,humid)
-        # #     plt.twinx()
-        #     self.greening_slide_mean_time_series(season,y_variable,humid)
-        #     plt.savefig(join(outdir,f'{season}_{y_variable}_{humid}.pdf'))
-        #     plt.close()
+        #     # self.trend_area_ratio_moving_window(df,season,y_variable,humid)
+        # # #     plt.twinx()
+        # #     self.greening_slide_mean_time_series(season,y_variable,humid)
+        # #     plt.savefig(join(outdir,f'{season}_{y_variable}_{humid}.pdf'))
+        # #     plt.close()
         plt.legend()
         plt.tight_layout()
         plt.show()
@@ -578,51 +579,25 @@ class Analysis:
         }
         f = join(self.this_class_arr,f'save_trend_moving_window/{season}_{y_variable}.df')
         df = T.load_df(f)
-        df_all = df[df['HI_class']==humid]
+
+        print(df)
+
+        df_all = df[df['HI_reclass']==humid]
         # df
         K = KDE_plot()
-        val_length = 34
+        val_length = 37
         y_var = f'{season}_{y_variable}'
         window_list = []
         for col in df_all:
             if f'{y_variable}' in str(col):
                 window = col.split('_')[0]
                 window_list.append(window)
-        year_dic = {
-            'year': [],
-            'pix': [],
-        }
-        variable_vals_dic = {
-            y_var:[],
-        }
-        for w in window_list:
-            for var_i in variable_vals_dic:
-                col_name = f'{w}_{var_i}'
-                vals = df_all[col_name]
-                for val in vals:
-                    variable_vals_dic[var_i].append(val)
-        for w in window_list:
-            for var_i in variable_vals_dic:
-                col_name = f'{w}_{var_i}'
-                pix_list = df_all['pix']
-                vals = df_all[col_name]
-                for val in vals:
-                    year_dic['year'].append(w)
-                for pix in pix_list:
-                    year_dic['pix'].append(pix)
-                break
-        df_new = pd.DataFrame()
+        window_list=T.drop_repeat_val_from_list(window_list)
 
-        for key in variable_vals_dic:
-            df_new[key] = variable_vals_dic[key]
-        df_new['pix'] = year_dic['pix']
-        df_new['year'] = year_dic['year']
-        df_new = df_new.dropna()
         mean_list = []
         std_list = []
         for j in window_list:
-            df_year = df_new[df_new['year'] == j]
-            y_val = df_year[y_var].to_list()
+            y_val = df_all[f'{j}_{season}_{y_variable}_trend'].to_list()
             y_val_mean = np.nanmean(y_val)
             y_val_std = np.nanstd(y_val)
             mean_list.append(y_val_mean)
