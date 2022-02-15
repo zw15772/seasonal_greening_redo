@@ -1,4 +1,5 @@
 # coding=utf-8
+import platform
 
 from preprocess import *
 results_root_main_flow = join(results_root,'Main_flow')
@@ -6,6 +7,21 @@ import pingouin as pg
 
 T.mk_dir(results_root_main_flow,force=True)
 
+
+class Global_vars:
+    def __init__(self):
+        self.land_tif = join(this_root,'temp/tif_template.tif')
+        pass
+
+    def load_df(self):
+        dff = Dataframe().dff
+        df = T.load_df(dff)
+        df = self.clean_df(df)
+        return df
+
+    def clean_df(self,df):
+        df = df[df['lat'] > 30]
+        return df
 
 class Dataframe:
 
@@ -19,7 +35,8 @@ class Dataframe:
         df = self.__gen_df_init()
         # df = self.add_data(df)
         # df = self.add_lon_lat_to_df(df)
-        df = self.add_Humid_nonhumid(df)
+        # df = self.add_Humid_nonhumid(df)
+        df = self.add_NDVI_mask(df)
         # df = self.add_ly_NDVI(df)
         # df = self.add_GEE_LAI(df)
         # df = self.add_lc(df)
@@ -56,18 +73,13 @@ class Dataframe:
     def add_data(self,df):
         df = self.__add_pix_to_df(df)
         df = pd.DataFrame(df)
-        LAI_dir = join(LAI().datadir,'per_pix_seasonal')
         columns = []
         for season in global_season_dic:
-            print(season,'LAI')
-            f = join(LAI_dir,f'{season}.npy')
-            dic = T.load_npy(f)
-            key_name = f'{season}_LAI'
-            columns.append(key_name)
-            df = T.add_spatial_dic_to_df(df,dic,key_name)
-        for season in global_season_dic:
             x_dir = join(data_root,
-             f'1982-2015_original_extraction_all_seasons/1982-2015_extraction_during_{season}_growing_season_static')
+             # f'1982-2015_original_extraction_all_seasons/1982-2015_extraction_during_{season}_growing_season_static')
+             f'1982-2018_original_extraction_all_seasons/1982-2018_extraction_during_{season}_growing_season_static')
+            if not isdir(x_dir):
+                continue
             for f in T.listdir(x_dir):
                 print(season, f)
                 fpath = join(x_dir,f)
@@ -79,6 +91,16 @@ class Dataframe:
         df = df.dropna(how='all',subset=columns)
         return df
 
+    def add_NDVI_mask(self,df):
+        ndvi_mask_tif = '/Volumes/NVME2T/greening_project_redo/conf/NDVI_mask.tif'
+        # ndvi_mask_tif = join(NDVI().datadir,'NDVI_mask.tif')
+        arr = ToRaster().raster2array(ndvi_mask_tif)[0]
+        arr = T.mask_999999_arr(arr,warning=False)
+        dic = DIC_and_TIF().spatial_arr_to_dic(arr)
+        df = T.add_spatial_dic_to_df(df,dic,'ndvi_mask_mark')
+        df = pd.DataFrame(df)
+        df = df.dropna(subset=['ndvi_mask_mark'])
+        return df
 
     def add_ly_NDVI(self,df):
         fdir = join(data_root,'NDVI_ly/per_pix_seasonal')
@@ -151,7 +173,7 @@ class Dataframe:
         for pix in dic:
             vals = dic[pix]
             vals = np.array(vals)
-            T.mask_999999_arr(vals)
+            vals = T.mask_999999_arr(vals,warning=False)
             vals[vals == 0] = np.nan
             if np.isnan(np.nanmean(vals)):
                 continue
@@ -192,7 +214,8 @@ class Partial_corr:
             f'{self.season}_temperature',
             f'{self.season}_CCI_SM',
             # f'{self.season}_GIMMS_NDVI',
-            f'{self.season}_GEE_AVHRR_LAI',
+            # f'{self.season}_GEE_AVHRR_LAI',
+            f'{self.season}_LAI_GIMMS',
         ]
         self.x_var_list = [f'{self.season}_CO2',
                       f'{self.season}_VPD',
@@ -200,7 +223,8 @@ class Partial_corr:
                       f'{self.season}_temperature',
                       f'{self.season}_CCI_SM', ]
         # self.y_var = f'{self.season}_GIMMS_NDVI'
-        self.y_var = f'{self.season}_GEE_AVHRR_LAI'
+        # self.y_var = f'{self.season}_GEE_AVHRR_LAI'
+        self.y_var = f'{self.season}_LAI_GIMMS'
 
     def run(self):
         self.cal_p_correlation()
@@ -358,7 +382,6 @@ class Partial_corr:
         plt.show()
 
 
-
 class Analysis:
 
     def __init__(self):
@@ -372,7 +395,7 @@ class Analysis:
     def run(self):
         # self.save_trend_moving_window()
         # self.save_mean_moving_window()
-        # self.add_constant_value_to_df()
+        self.add_constant_value_to_df()
         # for season in global_season_dic:
         #     print(season)
         #     self.save_partial_corr_moving_window(season)
@@ -760,6 +783,14 @@ class Analysis:
         df_new = df_new.dropna()
         mean_list = []
         std_list = []
+        mean_list = []
+        std_list = []
+        for w in window_list:
+            y_val = df_all[f'{w}_{y_var}'].to_list()
+            y_val_mean = np.nanmean(y_val)
+            y_val_std = np.nanstd(y_val)
+            mean_list.append(y_val_mean)
+            std_list.append(y_val_std)
         for j in window_list:
             df_year = df_new[df_new['year'] == j]
             y_val = df_year[y_var].to_list()
@@ -1584,10 +1615,289 @@ class Analysis:
             plt.title(title)
             plt.savefig(join(outdir,title+'.pdf'))
 
+
+
+class Moving_window:
+
+    def __init__(self):
+        self.this_class_arr,self.this_class_tif,self.this_class_png = T.mk_class_dir('Moving_window',results_root_main_flow)
+        self.__var_list()
+        pass
+
+    def __load_df(self):
+        df = Global_vars().load_df()
+        return df
+
+    def run(self):
+        # self.print_var_list()
+        # self.single_correlation()
+        self.trend()
+        # self.plot_single_correlation()
+        # self.plot_trend()
+
+        pass
+
+    def __var_list(self):
+        self.x_var_list = ['Aridity', 'CCI_SM', 'CO2',
+                      'PAR', 'Precip', 'SPEI3', 'VPD', 'root_soil_moisture',
+                      'surf_soil_moisture', 'temperature']
+        self.y_var = 'LAI_GIMMS'
+        self.all_var_list = ['Aridity', 'CCI_SM', 'CO2',
+                      'PAR', 'Precip', 'SPEI3', 'VPD', 'root_soil_moisture',
+                      'surf_soil_moisture', 'temperature','LAI_GIMMS']
+
+    def print_var_list(self):
+        df = self.__load_df()
+        var_list = []
+        for col in df:
+            col = str(col)
+            for season in global_season_dic:
+                if season in col:
+                    col_new = col.replace(f'{season}_','')
+                    var_list.append(col_new)
+        var_list = T.drop_repeat_val_from_list(var_list)
+        print(var_list)
+
+
+    def __gen_moving_window_index(self):
+        start_year = global_start_year
+        end_year = global_end_year
+        n = 15
+        moving_window_index_list = []
+        for y in range(start_year,end_year + 1):
+            moving_window_index = list(range(y,y+n))
+            moving_window_index_list.append(moving_window_index)
+            if y+n > end_year:
+                break
+        return moving_window_index_list
+
+    def add_constant_value_to_df(self,df):
+        df = Dataframe().add_lon_lat_to_df(df)
+        df = Dataframe().add_Humid_nonhumid(df)
+        df = Dataframe().add_lc(df)
+        return df
+
+    def single_correlation(self):
+        outdir = join(self.this_class_arr,'single_correlation')
+        T.mk_dir(outdir)
+        outf = join(outdir,'single_correlation.df')
+        moving_window_index_list = self.__gen_moving_window_index()
+        df = self.__load_df()
+        pix_list = T.get_df_unique_val_list(df,'pix')
+        results_dic = {}
+        for pix in pix_list:
+            results_dic[pix] = {}
+
+        for n in tqdm(range(len(moving_window_index_list))):
+            # print(n)
+            # if not n == 0:
+            #     continue
+            for season in global_season_dic:
+                # if not season == 'early':
+                #     continue
+                for x in self.x_var_list:
+                    x_var = f'{season}_{x}'
+                    y_var = f'{season}_{self.y_var}'
+                    xval_all = df[x_var]
+                    yval_all = df[y_var]
+
+                    pix = df['pix']
+                    x_spatial_dic = dict(zip(pix,xval_all))
+                    y_spatial_dic = dict(zip(pix,yval_all))
+                    for pix in y_spatial_dic:
+                        xval = x_spatial_dic[pix]
+                        yval = y_spatial_dic[pix]
+                        if type(xval) == float:
+                            continue
+                        if type(yval) == float:
+                            continue
+                        window_index = np.array(moving_window_index_list[n],dtype=int)
+                        window_index = window_index - global_start_year
+                        xval_pick = T.pick_vals_from_1darray(xval,window_index)
+                        yval_pick = T.pick_vals_from_1darray(yval,window_index)
+                        r,p = T.nan_correlation(xval_pick,yval_pick)
+                        key_r = f'{n}_{x_var}_r'
+                        key_p = f'{n}_{x_var}_p'
+                        results_dic[pix][key_r] = r
+                        results_dic[pix][key_p] = p
+
+        df_result = T.dic_to_df(results_dic,'pix')
+        T.print_head_n(df_result)
+        print(df_result)
+        df_result = self.add_constant_value_to_df(df_result)
+        T.save_df(df_result,outf)
+        T.df_to_excel(df_result,outf)
+
+
+    def __get_window_list(self,df):
+        x_var_1 = self.x_var_list[0]
+        window_list = []
+        for col in df:
+            col = str(col)
+            if x_var_1 in col:
+                window = col.split('_')[0]
+                window_list.append(int(window))
+        window_list = T.drop_repeat_val_from_list(window_list)
+        return window_list
+
+    def plot_single_correlation(self):
+        outdir = join(self.this_class_png,'plot_single_correlation')
+        T.mk_dir(outdir)
+        dff = join(self.this_class_arr, 'single_correlation/single_correlation.df')
+        df = T.load_df(dff)
+        # outdir = join(self.this_class_png, 'matrix_trend_moving_window')
+        # T.mk_dir(outdir)
+        var_list = [
+        'Aridity', 'CCI_SM', 'CO2',
+        'PAR', 'Precip', 'SPEI3', 'VPD', 'root_soil_moisture',
+        'surf_soil_moisture', 'temperature'
+        ]
+        window_list = self.__get_window_list(df)
+        # variable = var_list[0]
+        for variable in var_list:
+            lc_list = ['Evergreen', 'Deciduous', 'Shrubs', 'Grass']
+            HI_class_list = ['Humid', 'Non Humid']
+            HI_class_var = 'HI_reclass'
+            matrix = []
+            for HI_class in HI_class_list:
+                plt.figure(figsize=(10,7))
+                for lc in lc_list:
+                    for season in global_season_dic:
+                        # val_length = 34
+                        K = KDE_plot()
+                        df_lc = df[df['GLC2000'] == lc]
+                        df_HI = df_lc[df_lc[HI_class_var] == HI_class]
+                        mean_list = []
+                        x_list = []
+                        for w in window_list:
+                            df_w = df_HI[f'{w}_{season}_{variable}_r'].tolist()
+                            mean = np.nanmean(df_w)
+                            mean_list.append(mean)
+                            x_list.append(w)
+
+                        # matrix.append(mean_list)
+                        y = [f'{season}_{variable}_{lc}'] * len(mean_list)
+                        z = mean_list
+                        plt.scatter(x_list, y, c=z, s=120, marker='s', cmap='RdBu_r',vmin=-0.4,vmax=0.4)
+                        plt.subplots_adjust(
+                            top=0.926,
+                            bottom=0.08,
+                            left=0.404,
+                            right=0.937,
+                            hspace=0.2,
+                            wspace=0.2
+                        )
+                plt.colorbar()
+                title = f'{variable}_{HI_class}'
+                plt.title(title)
+                # plt.tight_layout()
+                plt.axis('equal')
+                # plt.show()
+                plt.savefig(join(outdir, f'{variable}_{HI_class}.pdf'))
+                plt.close()
+
+
+    def trend(self):
+        outdir = join(self.this_class_arr,'trend')
+        T.mk_dir(outdir)
+        outf = join(outdir,'trend.df')
+        moving_window_index_list = self.__gen_moving_window_index()
+        df = self.__load_df()
+        pix_list = T.get_df_unique_val_list(df,'pix')
+        results_dic = {}
+        for pix in pix_list:
+            results_dic[pix] = {}
+
+        for n in tqdm(range(len(moving_window_index_list))):
+            # print(n)
+            # if not n == 0:
+            #     continue
+            for season in global_season_dic:
+                # if not season == 'early':
+                #     continue
+                for x in self.all_var_list:
+                    x_var = f'{season}_{x}'
+                    xval_all = df[x_var]
+
+                    pix = df['pix']
+                    x_spatial_dic = dict(zip(pix,xval_all))
+                    for pix in x_spatial_dic:
+                        xval = x_spatial_dic[pix]
+                        if type(xval) == float:
+                            continue
+                        window_index = np.array(moving_window_index_list[n],dtype=int)
+                        window_index = window_index - global_start_year
+                        xval_pick = T.pick_vals_from_1darray(xval,window_index)
+                        r,p = T.nan_correlation(list(range(len(xval_pick))),xval_pick)
+                        key_r = f'{n}_{x_var}_r'
+                        key_p = f'{n}_{x_var}_p'
+                        results_dic[pix][key_r] = r
+                        results_dic[pix][key_p] = p
+
+        df_result = T.dic_to_df(results_dic,'pix')
+        T.print_head_n(df_result)
+        print(df_result)
+        df_result = self.add_constant_value_to_df(df_result)
+        T.save_df(df_result,outf)
+        T.df_to_excel(df_result,outf)
+
+    def plot_trend(self):
+        outdir = join(self.this_class_png,'plot_trend')
+        T.mk_dir(outdir)
+        dff = join(self.this_class_arr, 'trend/trend.df')
+        df = T.load_df(dff)
+        # outdir = join(self.this_class_png, 'matrix_trend_moving_window')
+        # T.mk_dir(outdir)
+        var_list = self.all_var_list
+        window_list = self.__get_window_list(df)
+        # variable = var_list[0]
+        for variable in var_list:
+            lc_list = ['Evergreen', 'Deciduous', 'Shrubs', 'Grass']
+            HI_class_list = ['Humid', 'Non Humid']
+            HI_class_var = 'HI_reclass'
+            matrix = []
+            for HI_class in HI_class_list:
+                plt.figure(figsize=(10,7))
+                for lc in lc_list:
+                    for season in global_season_dic:
+                        # val_length = 34
+                        K = KDE_plot()
+                        df_lc = df[df['GLC2000'] == lc]
+                        df_HI = df_lc[df_lc[HI_class_var] == HI_class]
+                        mean_list = []
+                        x_list = []
+                        for w in window_list:
+                            df_w = df_HI[f'{w}_{season}_{variable}_r'].tolist()
+                            mean = np.nanmean(df_w)
+                            mean_list.append(mean)
+                            x_list.append(w)
+
+                        # matrix.append(mean_list)
+                        y = [f'{season}_{variable}_{lc}'] * len(mean_list)
+                        z = mean_list
+                        plt.scatter(x_list, y, c=z, s=120, marker='s', cmap='RdBu_r')
+                        plt.subplots_adjust(
+                            top=0.926,
+                            bottom=0.08,
+                            left=0.404,
+                            right=0.937,
+                            hspace=0.2,
+                            wspace=0.2
+                        )
+                plt.colorbar()
+                title = f'{variable}_{HI_class}'
+                plt.title(title)
+                # plt.tight_layout()
+                plt.axis('equal')
+                # plt.show()
+                plt.savefig(join(outdir, f'{variable}_{HI_class}.pdf'))
+                plt.close()
+
 def main():
     # Greening().run()
     # Dataframe().run()
-    Analysis().run()
+    # Analysis().run()
+    Moving_window().run()
     # Partial_corr('early').run()
     # Partial_corr('peak').run()
     # Partial_corr('late').run()

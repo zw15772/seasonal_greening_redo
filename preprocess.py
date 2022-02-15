@@ -4,6 +4,7 @@ from __init__ import *
 # import ee
 
 global_start_year = 1982
+global_end_year = 2018
 global_season_dic = {
     'early':(3,4,5),
     'peak':(6,7,8),
