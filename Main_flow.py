@@ -1,5 +1,4 @@
 # coding=utf-8
-import platform
 
 from preprocess import *
 results_root_main_flow = join(results_root,'Main_flow')
@@ -39,10 +38,9 @@ class Dataframe:
 
     def run(self):
         df = self.__gen_df_init()
-        df = self.add_data(df)
-        df = self.add_lon_lat_to_df(df)
+        # df = self.add_data(df)
+        # df = self.add_lon_lat_to_df(df)
         df = self.add_Humid_nonhumid(df)
-        df = self.add_NDVI_mask(df)
         # df = self.add_ly_NDVI(df)
         # df = self.add_GEE_LAI(df)
         # df = self.add_lc(df)
@@ -97,16 +95,6 @@ class Dataframe:
         df = df.dropna(how='all',subset=columns)
         return df
 
-    def add_NDVI_mask(self,df):
-        ndvi_mask_tif = '/Volumes/NVME2T/greening_project_redo/conf/NDVI_mask.tif'
-        # ndvi_mask_tif = join(NDVI().datadir,'NDVI_mask.tif')
-        arr = ToRaster().raster2array(ndvi_mask_tif)[0]
-        arr = T.mask_999999_arr(arr,warning=False)
-        dic = DIC_and_TIF().spatial_arr_to_dic(arr)
-        df = T.add_spatial_dic_to_df(df,dic,'ndvi_mask_mark')
-        df = pd.DataFrame(df)
-        df = df.dropna(subset=['ndvi_mask_mark'])
-        return df
 
     def add_ly_NDVI(self,df):
         fdir = join(data_root,'NDVI_ly/per_pix_seasonal')
@@ -149,7 +137,7 @@ class Dataframe:
         vals[vals < down] = np.nan
         return vals
 
-    def P_PET_reclass(self,):
+    def P_PET_class(self,):
         dic = self.P_PET_ratio(self.P_PET_fdir)
         dic_reclass = {}
         for pix in dic:
@@ -188,7 +176,7 @@ class Dataframe:
             dic_long_term[pix] = long_term_vals
         return dic_long_term
     def add_Humid_nonhumid(self,df):
-        P_PET_dic_reclass = self.P_PET_reclass()
+        P_PET_dic_reclass = self.P_PET_class()
         df = T.add_spatial_dic_to_df(df,P_PET_dic_reclass,'HI_reclass')
         df = T.add_spatial_dic_to_df(df, P_PET_dic_reclass, 'HI_class')
         df.loc[df['HI_reclass'] != 'Humid', ['HI_reclass']] = 'Non Humid'
@@ -198,6 +186,17 @@ class Dataframe:
         lc_f = join(GLC2000().datadir,'lc_dic_reclass.npy')
         lc_dic = T.load_npy(lc_f)
         df = T.add_spatial_dic_to_df(df,lc_dic,'GLC2000')
+        return df
+
+    def add_NDVI_mask(self, df):
+        ndvi_mask_tif = '/Volumes/SSD_sumsang/project_greening/Data/NDVI_mask.tif'
+        # ndvi_mask_tif = join(NDVI().datadir,'NDVI_mask.tif')
+        arr = ToRaster().raster2array(ndvi_mask_tif)[0]
+        arr = T.mask_999999_arr(arr, warning=False)
+        dic = DIC_and_TIF().spatial_arr_to_dic(arr)
+        df = T.add_spatial_dic_to_df(df, dic, 'ndvi_mask_mark')
+        df = pd.DataFrame(df)
+        df = df.dropna(subset=['ndvi_mask_mark'])
         return df
 
 class Partial_corr:
@@ -388,6 +387,7 @@ class Partial_corr:
         plt.show()
 
 
+
 class Analysis:
 
     def __init__(self):
@@ -401,7 +401,7 @@ class Analysis:
     def run(self):
         self.save_trend_moving_window()
         # self.save_mean_moving_window()
-        self.add_constant_value_to_df()
+        # self.add_constant_value_to_df()
         # for season in global_season_dic:
         #     print(season)
         #     self.save_partial_corr_moving_window(season)
@@ -415,21 +415,21 @@ class Analysis:
         # # T.mk_dir(outdir)
         # # y_variable = 'GIMMS_NDVI'
         # # # y_variable = 'GEE_AVHRR_LAI'
-        y_variable = 'LAI_GIMMS'
-        # # # # y_variable = 'VPD'
-        humid ='Non Humid'
-        # # # humid = 'Humid'
-        #
-        for season in global_season_dic:
-            self.greening_slide_trend_time_series(season,y_variable,humid)
-        #     # self.trend_area_ratio_moving_window(df,season,y_variable,humid)
+        # y_variable = 'LAI_GIMMS'
+        # # # # # # y_variable = 'VPD'
+        # humid ='Non Humid'
+        # # # # # humid = 'Humid'
+        # # #
+        # for season in global_season_dic:
+        #     self.greening_slide_trend_time_series(season,y_variable,humid)
+        # #     # self.trend_area_ratio_moving_window(df,season,y_variable,humid)
         # # #     plt.twinx()
         # #     self.greening_slide_mean_time_series(season,y_variable,humid)
         # #     plt.savefig(join(outdir,f'{season}_{y_variable}_{humid}.pdf'))
         # #     plt.close()
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
+        # plt.legend()
+        # plt.tight_layout()
+        # plt.show()
         ###### moving window ##########
         # self.NDVI_CO2_VPD()
         # self.NDVI_CO2_VPD_corr_line()
@@ -479,7 +479,7 @@ class Analysis:
         df = self.__load_df()
         df_all = pd.DataFrame()
         window_list = []
-        val_length = 34
+        val_length = 37
         for w in range(val_length):
             if w + self.n >= val_length:
                 continue
@@ -1399,57 +1399,56 @@ class Analysis:
 
     def save_trend_moving_window(self):
         df = self.__load_df()
-        for col in df:
-            try:
-                y_var = col
-                outdir = join(self.this_class_arr,'save_trend_moving_window')
-                T.mk_dir(outdir)
-                outf = join(outdir,f'{y_var}.df')
-                if isfile(outf):
-                    print(f'{outf} is existed')
+        col_list=['early_LAI_GIMMS','peak_LAI_GIMMS','late_LAI_GIMMS']
+
+        for col in col_list:
+            y_var = col
+            outdir = join(self.this_class_arr,'save_trend_moving_window')
+            T.mk_dir(outdir)
+            outf = join(outdir,f'{y_var}.df')
+            if isfile(outf):
+                print(f'{outf} is existed')
+                continue
+            val_length = 37
+            df_all = pd.DataFrame()
+            window_list = []
+            K = KDE_plot()
+            col_list = []
+            for w in tqdm(range(val_length),col):
+                if w + self.n >= val_length:
                     continue
-                val_length = 34
-                df_all = pd.DataFrame()
-                window_list = []
-                K = KDE_plot()
-                col_list = []
-                for w in tqdm(range(val_length),col):
-                    if w + self.n >= val_length:
+                pick_index = list(range(w, w + self.n))
+                window_mean_val_dic = {}
+                for i, row in df.iterrows():
+                    pix = row.pix
+                    val_dic = {}
+                    vals = row[y_var]
+                    if type(vals) == float:
                         continue
-                    pick_index = list(range(w, w + self.n))
-                    window_mean_val_dic = {}
-                    for i, row in df.iterrows():
-                        pix = row.pix
-                        val_dic = {}
-                        vals = row[y_var]
-                        if type(vals) == float:
-                            continue
-                        try:
-                            picked_vals = T.pick_vals_from_1darray(vals, pick_index)
-                        except:
-                            picked_vals = np.nan
-                        # picked_vals_mean = np.nanmean(picked_vals)  # mean
-                        try:
-                            picked_vals_mean, b, r = K.linefit(list(range(len(picked_vals))), picked_vals)  # trend
-                        except:
-                            picked_vals_mean = np.nan
-                        val_dic[y_var] = picked_vals_mean
-                        window_mean_val_dic[pix] = val_dic
-                    window_list.append(f'{w}')
-                    df_j = T.dic_to_df(window_mean_val_dic, 'pix')
-                    colomns = df_j.columns
-                    df_new = pd.DataFrame()
-                    df_new['pix'] = df_j['pix']
-                    for col in colomns:
-                        if col == 'pix':
-                            continue
-                        new_col = f'{w}_{col}'
-                        col_list.append(new_col)
-                        df_new[new_col] = df_j[col]
-                    df_all[df_new.columns] = df_new[df_new.columns]
-                T.save_df(df_all,outf)
-            except:
-                pass
+                    try:
+                        picked_vals = T.pick_vals_from_1darray(vals, pick_index)
+                    except:
+                        picked_vals = np.nan
+                    # picked_vals_mean = np.nanmean(picked_vals)  # mean
+                    try:
+                        picked_vals_mean, b, r = K.linefit(list(range(len(picked_vals))), picked_vals)  # trend
+                    except:
+                        picked_vals_mean = np.nan
+                    val_dic[y_var] = picked_vals_mean
+                    window_mean_val_dic[pix] = val_dic
+                window_list.append(f'{w}')
+                df_j = T.dic_to_df(window_mean_val_dic, 'pix')
+                colomns = df_j.columns
+                df_new = pd.DataFrame()
+                df_new['pix'] = df_j['pix']
+                for col in colomns:
+                    if col == 'pix':
+                        continue
+                    new_col = f'{w}_{col}'
+                    col_list.append(new_col)
+                    df_new[new_col] = df_j[col]
+                df_all[df_new.columns] = df_new[df_new.columns]
+            T.save_df(df_all,outf)
 
         pass
 
@@ -1639,8 +1638,8 @@ class Moving_window:
         # self.single_correlation()
         # self.trend()
         # self.plot_single_correlation()
-        self.plot_trend()
-        # self.trend_time_series()
+        # self.plot_trend()
+        self.trend_time_series()
 
         pass
 
@@ -1650,7 +1649,7 @@ class Moving_window:
                       'surf_soil_moisture', 'temperature']
         # self.y_var = 'LAI_GIMMS'
         # self.y_var = 'GIMMS_NDVI'
-        self.y_var = 'GEE_AVHRR_LAI'
+        self.y_var = 'LAI_GIMMS'
         self.all_var_list = copy.copy(self.x_var_list)
         self.all_var_list.append(self.y_var)
 
@@ -1829,11 +1828,12 @@ class Moving_window:
                 #     continue
                 for x in self.all_var_list:
                     x_var = f'{season}_{x}'
-                    # print(x_var)
-                    if not 'VPD' in x_var:
+                    print(x_var)
+
+                    if not 'LAI_GIMMS' in x_var:
                         continue
-                    # print(x_var)
-                    # exit()
+                    print(x_var)
+
                     xval_all = df[x_var]
 
                     pix = df['pix']
@@ -1854,7 +1854,8 @@ class Moving_window:
                             results_dic[pix][key_p] = p
                         except:
                             continue
-
+        # print(results_dic)
+        # exit()
         df_result = T.dic_to_df(results_dic,'pix')
         T.print_head_n(df_result)
         print(df_result)
@@ -1872,10 +1873,10 @@ class Moving_window:
         # outdir = join(self.this_class_png, 'matrix_trend_moving_window')
         # T.mk_dir(outdir)
         var_list = self.all_var_list
-        window_list = self.__get_window_list(df,'VPD')
+        window_list = self.__get_window_list(df,'LAI_GIMMS')
         # variable = var_list[0]
         for variable in var_list:
-            if not 'VPD' in variable:
+            if not 'LAI_GIMMS' in variable:
                 continue
             lc_list = ['Evergreen', 'Deciduous', 'Shrubs', 'Grass']
             HI_class_list = ['Humid', 'Non Humid']
@@ -1943,9 +1944,9 @@ class Moving_window:
         # exit()
         lc_var = 'GLC2000'
         lc_list = T.get_df_unique_val_list(df,lc_var)
-        window_list = self.__get_window_list(df)
+        window_list = self.__get_window_list(df,'LAI_GIMMS')
         for xvar in self.all_var_list:
-            if not 'GEE' in xvar:
+            if not 'LAI' in xvar:
                 continue
             plt.figure()
             for season in global_season_dic:
@@ -1996,8 +1997,8 @@ class Moving_window:
 def main():
     # Greening().run()
     # Dataframe().run()
-    # Analysis().run()
-    Moving_window().run()
+    Analysis().run()
+    # Moving_window().run()
     # Partial_corr('early').run()
     # Partial_corr('peak').run()
     # Partial_corr('late').run()
