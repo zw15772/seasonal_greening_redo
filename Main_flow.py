@@ -1,4 +1,7 @@
 # coding=utf-8
+import platform
+
+import matplotlib.pyplot as plt
 
 from preprocess import *
 results_root_main_flow = join(results_root,'Main_flow')
@@ -1639,8 +1642,8 @@ class Moving_window:
     def run(self):
         # self.print_var_list()
 
-        # self.single_correlation()
-        self.single_correlation_matrix_plot()
+        self.single_correlation()
+        # self.single_correlation_matrix_plot()
 
         # self.trend()
         # self.trend_time_series_plot()
@@ -2271,35 +2274,686 @@ class Moving_window:
                 plt.close()
 
 
-def check_df_seasonal(df):
+class Two_period_comparison:
 
-    for season in global_season_dic:
-        var_name = 'temperature'
-        col_name = f'{season}_{var_name}'
-        matrix = []
-        for i, row in df.iterrows():
-            pix = row.pix
-            vals = row[col_name]
-            matrix.append(vals)
-        matrix = np.array(matrix)
-        matrix_T = matrix.T
-        mean = []
-        for i in matrix_T:
-            mean_i = np.nanmean(i)
-            mean.append(mean_i)
-        plt.plot(mean,label=season)
-    plt.legend()
-    plt.show()
+    def __init__(self):
+        self.this_class_arr,self.this_class_tif,self.this_class_png = T.mk_class_dir('Two_period_comparison',results_root_main_flow)
+        self.__var_list()
+        self.__period()
+
+
+    def run(self):
+        self.multi_regression(period=2,detrend=True)
+        # self.multi_regression_tif()
+        # self.delta_tif('multi_regression')
+        # self.delta_pdf('multi_regression')
+
+        # self.single_correlation(period=2,detrend=True)
+        # self.single_correlation_tif()
+        # self.single_correlation_delta_tif('single_correlation')
+        # self.single_correlation_delta_pdf('single_correlation')
+
+        # self.partial_correlation(period=2,detrend=True)
+        # self.partial_correlation_tif()
+        # self.delta_tif('partial_correlation')
+        self.delta_pdf('partial_correlation')
+
+        # self.trend(period=2)
+        # self.trend_tif()
+        # self.trend_delta_tif()
+
+        pass
+
+
+    def __load_df(self):
+        df = Global_vars().load_df()
+        return df
+
+    def __var_list(self):
+        self.x_var_list = ['Aridity', 'CCI_SM', 'CO2', 'PAR', 'Precip', 'SPEI3', 'VPD', 'temperature']
+        self.y_var = 'LAI_GIMMS'
+        self.all_var_list = copy.copy(self.x_var_list)
+        self.all_var_list.append(self.y_var)
+
+    def __period(self):
+        self.period1_start = 1982
+        self.period1_end = 2001
+        self.period2_start = 2002
+        self.period2_end = 2018
+
+        self.data_start_year = 1982
+
+    def __partial_corr_var_list(self):
+        y_var = f'LAI_GIMMS'
+        x_var_list = [f'CO2',
+                       f'VPD',
+                       f'PAR',
+                       f'temperature',
+                       f'CCI_SM', ]
+        all_vars_list = copy.copy(x_var_list)
+        all_vars_list.append(y_var)
+
+        return x_var_list,y_var,all_vars_list
+
+    def __cal_multi_regression(self,df,x_var_list,y_var):
+        model = LinearRegression()
+        x_var_new = []
+        for x in x_var_list:
+            if x in df:
+                x_var_new.append(x)
+        X = df[x_var_new]
+        Y = df[y_var]
+        model.fit(X,Y)
+        coef = model.coef_
+        result_dic = dict(zip(x_var_new,coef))
+        return result_dic
+    def __partial_corr(self, df, x, y, cov):
+        df = pd.DataFrame(df)
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.dropna()
+        stats_result = pg.partial_corr(data=df, x=x, y=y, covar=cov, method='pearson').round(3)
+        r = float(stats_result['r'])
+        p = float(stats_result['p-val'])
+        return r, p
+
+    def __cal_partial_correlation(self,df,x_var_list,y_var):
+        partial_correlation={}
+        partial_correlation_p_value = {}
+        x_var_list_valid = []
+        for x in x_var_list:
+            if x in df:
+                x_var_list_valid.append(x)
+        for x in x_var_list_valid:
+            x_var_list_valid_new_cov=copy.copy(x_var_list_valid)
+            x_var_list_valid_new_cov.remove(x)
+            r,p=self.__partial_corr(df,x,y_var,x_var_list_valid_new_cov)
+            partial_correlation[x]=r
+            partial_correlation_p_value[x] = p
+        return partial_correlation,partial_correlation_p_value
+
+    def multi_regression(self,period,detrend):
+        if period == 1:
+            start_year = self.period1_start
+            end_year = self.period1_end
+        elif period == 2:
+            start_year = self.period2_start
+            end_year = self.period2_end
+        else:
+            raise UserWarning(f'period {period} is incorrect')
+        if detrend==True:
+            outdir = join(self.this_class_arr, 'multi_regression_detrend')
+        else:
+            outdir = join(self.this_class_arr, 'multi_regression')
+        T.mk_dir(outdir)
+        pick_index = list(range(start_year,end_year+1))
+
+        df = self.__load_df()
+        x_var_list, y_var, all_vars_list = self.__partial_corr_var_list()
+        pix_list = T.get_df_unique_val_list(df, 'pix')
+        outf = join(outdir, f'period_{period}.df')
+        pick_index = np.array(pick_index, dtype=int)
+        pick_index = pick_index - self.data_start_year
+        results_dic = {}
+        for pix in pix_list:
+            results_dic[pix] = {}
+        for season in global_season_dic:
+            key = f'{season}'
+            for i, row in tqdm(df.iterrows(), total=len(df),desc=season):
+                pix = row.pix
+                df_for_partial_corr = pd.DataFrame()
+                for x_var in x_var_list:
+                    x_col_name = f'{season}_{x_var}'
+                    xval = row[x_col_name]
+                    xval_pick = T.pick_vals_from_1darray(xval, pick_index)
+                    if detrend == True:
+                        xval_pick = T.detrend_vals(xval_pick)
+                    df_for_partial_corr[x_var] = xval_pick
+                y_col_name = f'{season}_{self.y_var}'
+                yval = row[y_col_name]
+                if type(yval) == float:
+                    continue
+                # print(yval)
+                yval_pick = T.pick_vals_from_1darray(yval, pick_index)
+                if detrend == True:
+                    yval_pick = T.detrend_vals(yval_pick)
+                df_for_partial_corr[self.y_var] = yval_pick
+                df_for_partial_corr = df_for_partial_corr.dropna(axis=1)
+                multi_reg = self.__cal_multi_regression(df_for_partial_corr, x_var_list, y_var)
+                results_dic[pix][key] = multi_reg
+        # print(results_dic)
+        # exit()
+        df_result = T.dic_to_df(results_dic, 'pix')
+        T.print_head_n(df_result)
+        # print(df_result)
+        df_result = Moving_window().add_constant_value_to_df(df_result)
+        T.save_df(df_result, outf)
+        T.df_to_excel(df_result, outf)
+        pass
+
+    def single_correlation(self,period,detrend):
+        if period == 1:
+            start_year = self.period1_start
+            end_year = self.period1_end
+        elif period == 2:
+            start_year = self.period2_start
+            end_year = self.period2_end
+        else:
+            raise UserWarning(f'period {period} is incorrect')
+        if detrend == True:
+            outdir = join(self.this_class_arr, 'single_correlation_detrend')
+        else:
+            outdir = join(self.this_class_arr, 'single_correlation')
+        T.mk_dir(outdir)
+        pick_index = list(range(start_year, end_year + 1))
+
+        df = self.__load_df()
+        x_var_list, y_var, all_vars_list = self.__partial_corr_var_list()
+        pix_list = T.get_df_unique_val_list(df, 'pix')
+        outf = join(outdir, f'period_{period}.df')
+        pick_index = np.array(pick_index, dtype=int)
+        pick_index = pick_index - self.data_start_year
+        results_dic = {}
+        for pix in pix_list:
+            results_dic[pix] = {}
+        for season in global_season_dic:
+            for x in self.x_var_list:
+                x_var = f'{season}_{x}'
+                y_var = f'{season}_{self.y_var}'
+                xval_all = df[x_var]
+                yval_all = df[y_var]
+                df_pix_list = df['pix']
+                x_spatial_dic = dict(zip(df_pix_list, xval_all))
+                y_spatial_dic = dict(zip(df_pix_list, yval_all))
+                for pix in tqdm(y_spatial_dic,desc=f'{x}_{season}'):
+                    xval = x_spatial_dic[pix]
+                    yval = y_spatial_dic[pix]
+                    if type(xval) == float:
+                        continue
+                    if type(yval) == float:
+                        continue
+                    xval_pick = T.pick_vals_from_1darray(xval, pick_index)
+                    yval_pick = T.pick_vals_from_1darray(yval, pick_index)
+                    if detrend == True:
+                        xval_pick = T.detrend_vals(xval_pick)
+                        yval_pick = T.detrend_vals(yval_pick)
+                    r, p = T.nan_correlation(xval_pick, yval_pick)
+                    key_r = f'{x_var}_r'
+                    key_p = f'{x_var}_p'
+                    results_dic[pix][key_r] = r
+                    results_dic[pix][key_p] = p
+
+        df_result = T.dic_to_df(results_dic, 'pix')
+        T.print_head_n(df_result)
+        print(df_result)
+        df_result = Moving_window().add_constant_value_to_df(df_result)
+        T.save_df(df_result, outf)
+        T.df_to_excel(df_result, outf)
+        pass
+
+
+    def partial_correlation(self,period,detrend):
+        if period == 1:
+            start_year = self.period1_start
+            end_year = self.period1_end
+        elif period == 2:
+            start_year = self.period2_start
+            end_year = self.period2_end
+        else:
+            raise UserWarning(f'period {period} is incorrect')
+        if detrend == True:
+            outdir = join(self.this_class_arr, 'partial_correlation_detrend')
+        else:
+            outdir = join(self.this_class_arr, 'partial_correlation')
+        T.mk_dir(outdir)
+        pick_index = list(range(start_year,end_year+1))
+
+        df = self.__load_df()
+        x_var_list, y_var, all_vars_list = self.__partial_corr_var_list()
+        pix_list = T.get_df_unique_val_list(df, 'pix')
+        outf = join(outdir, f'period_{period}.df')
+        pick_index = np.array(pick_index, dtype=int)
+        pick_index = pick_index - self.data_start_year
+        results_dic = {}
+        for pix in pix_list:
+            results_dic[pix] = {}
+        for season in global_season_dic:
+            key = f'{season}'
+            for i,row in tqdm(df.iterrows(),total=len(df),desc=f'{season}'):
+                pix = row.pix
+                df_for_partial_corr = pd.DataFrame()
+                for x_var in x_var_list:
+                    x_col_name = f'{season}_{x_var}'
+                    xval = row[x_col_name]
+                    xval_pick = T.pick_vals_from_1darray(xval,pick_index)
+                    if detrend == True:
+                        xval_pick = T.detrend_vals(xval_pick)
+                    df_for_partial_corr[x_var] = xval_pick
+                y_col_name = f'{season}_{self.y_var}'
+                yval = row[y_col_name]
+                if type(yval) == float:
+                    continue
+                # print(yval)
+                yval_pick = T.pick_vals_from_1darray(yval, pick_index)
+                if detrend == True:
+                    yval_pick = T.detrend_vals(yval_pick)
+                df_for_partial_corr[self.y_var] = yval_pick
+                df_for_partial_corr = df_for_partial_corr.dropna(axis=1)
+                partial_correlation,partial_correlation_p_value = self.__cal_partial_correlation(df_for_partial_corr,x_var_list,y_var)
+                results_dic[pix][key] = partial_correlation
+
+        df_result = T.dic_to_df(results_dic,'pix')
+        T.print_head_n(df_result)
+        # print(df_result)
+        df_result = Moving_window().add_constant_value_to_df(df_result)
+        T.save_df(df_result,outf)
+        T.df_to_excel(df_result,outf)
+
+    def trend(self,period):
+        if period == 1:
+            start_year = self.period1_start
+            end_year = self.period1_end
+        elif period == 2:
+            start_year = self.period2_start
+            end_year = self.period2_end
+        else:
+            raise UserWarning(f'period {period} is incorrect')
+        outdir = join(self.this_class_arr, 'trend')
+        T.mk_dir(outdir)
+        pick_index = list(range(start_year, end_year + 1))
+
+        df = self.__load_df()
+        x_var_list, y_var, all_vars_list = self.__partial_corr_var_list()
+        pix_list = T.get_df_unique_val_list(df, 'pix')
+        outf = join(outdir, f'period_{period}.df')
+        pick_index = np.array(pick_index, dtype=int)
+        pick_index = pick_index - self.data_start_year
+        results_dic = {}
+        for pix in pix_list:
+            results_dic[pix] = {}
+        K = KDE_plot()
+        for season in global_season_dic:
+            for x in self.all_var_list:
+                print(season,x)
+                x_var = f'{season}_{x}'
+                xval_all = df[x_var].tolist()
+                df_pix_list = df['pix']
+                x_spatial_dic = dict(zip(df_pix_list, xval_all))
+                for pix in x_spatial_dic:
+                    xval = x_spatial_dic[pix]
+                    if type(xval) == float:
+                        continue
+                    # print(window_index)
+                    xval_pick = T.pick_vals_from_1darray(xval, pick_index)
+                    # r,p = T.nan_correlation(list(range(len(xval_pick))),xval_pick)
+                    try:
+                        a, b, r, p = K.linefit(list(range(len(xval_pick))), xval_pick)
+                        key_r = f'{x_var}_r'
+                        key_p = f'{x_var}_p'
+                        results_dic[pix][key_r] = a
+                        results_dic[pix][key_p] = p
+                    except:
+                        continue
+
+        df_result = T.dic_to_df(results_dic, 'pix')
+        T.print_head_n(df_result)
+        print(df_result)
+        df_result = Moving_window().add_constant_value_to_df(df_result)
+        T.save_df(df_result, outf)
+        T.df_to_excel(df_result, outf)
+
+    def trend_tif(self):
+        fdir = join(self.this_class_arr,'trend')
+        outdir = join(self.this_class_tif,'trend')
+        T.mk_dir(outdir)
+        for period in [1,2]:
+            outdir_i = join(outdir,f'period_{period}')
+            T.mk_dir(outdir_i)
+            dff = join(fdir,f'period_{period}.df')
+            df = T.load_df(dff)
+            for col in df:
+                if col == 'pix':
+                    continue
+                print(period,col)
+                val = df[col].tolist()
+                pix = df['pix'].tolist()
+                spatial_dic = dict(zip(pix,val))
+                outf = join(outdir_i,f'{col}.tif')
+                try:
+                    DIC_and_TIF().pix_dic_to_tif(spatial_dic,outf)
+                except Exception as e:
+                    print(e)
+
+        pass
+
+    def trend_delta_tif(self):
+        fdir = join(self.this_class_tif,'trend')
+        outdir = join(self.this_class_tif,'trend_delta')
+        T.mk_dir(outdir)
+        f_list = []
+        for folder in T.listdir(fdir):
+            for f in T.listdir(join(fdir,folder)):
+                if not f.endswith('r.tif'):
+                    continue
+                f_list.append(f)
+            break
+
+        for f in f_list:
+            print(f)
+            arrs = []
+            for period in [1,2]:
+                folder = join(fdir,f'period_{period}')
+                fpath = join(folder,f)
+                arr = ToRaster().raster2array(fpath)[0]
+                arr = T.mask_999999_arr(arr,warning=False)
+                arrs.append(arr)
+                # plt.figure()
+                # plt.imshow(arr)
+            # plt.show()
+            delta_arr = arrs[1] - arrs[0]
+            DIC_and_TIF().arr_to_tif(delta_arr,join(outdir,f))
+
+
+
+    def single_correlation_tif(self):
+        outdir = join(self.this_class_tif,'single_correlation')
+        T.mk_dir(outdir)
+        for detrend in ['_detrend','']:
+            fdir = join(self.this_class_arr, 'single_correlation')
+            fdir = fdir + detrend
+            for period in [1,2]:
+                outdir_i = join(outdir,f'period_{period}')
+                outdir_i = outdir_i + detrend
+                T.mk_dir(outdir_i)
+                dff = join(fdir,f'period_{period}.df')
+                df = T.load_df(dff)
+                for col in df:
+                    if col == 'pix':
+                        continue
+                    print(period,col)
+                    val = df[col].tolist()
+                    pix = df['pix'].tolist()
+                    spatial_dic = dict(zip(pix,val))
+                    outf = join(outdir_i,f'{col}.tif')
+                    try:
+                        DIC_and_TIF().pix_dic_to_tif(spatial_dic,outf)
+                    except Exception as e:
+                        print(e)
+
+        pass
+
+    def delta_tif(self,folder_name):
+
+        fdir = join(self.this_class_tif,folder_name)
+        outdir = join(self.this_class_tif, folder_name+'_delta')
+        T.mk_dir(outdir)
+        for detrend in ['_detrend','']:
+            f_list = []
+            for folder in T.listdir(fdir):
+                for f in T.listdir(join(fdir,folder)):
+                    if not f.endswith('.tif'):
+                        continue
+                    f_list.append(f)
+                break
+            outdir_i = join(outdir,f'delta{detrend}')
+            T.mk_dir(outdir_i)
+            for f in f_list:
+                print(f)
+                arrs = []
+                for period in [1,2]:
+                    folder = join(fdir,f'period_{period}{detrend}')
+                    fpath = join(folder,f)
+                    arr = ToRaster().raster2array(fpath)[0]
+                    arr = T.mask_999999_arr(arr,warning=False)
+                    arrs.append(arr)
+                    # plt.figure()
+                    # plt.imshow(arr)
+                # plt.show()
+                delta_arr = arrs[1] - arrs[0]
+                DIC_and_TIF().arr_to_tif(delta_arr,join(outdir_i,f))
+
+
+    def __get_humid_nonhumid_dic(self):
+        outdir = join(temporary_root,'get_humid_nonhumid_dic')
+        T.mk_dir(outdir)
+        HI_class_spatial_dic_f = join(outdir,'HI_class_spatial_dic.npy')
+        HI_reclass_spatial_dic_f = join(outdir,'HI_reclass_spatial_dic.npy')
+        if isfile(HI_reclass_spatial_dic_f):
+            HI_class_spatial_dic = T.load_npy(HI_class_spatial_dic_f)
+            HI_reclass_spatial_dic = T.load_npy(HI_reclass_spatial_dic_f)
+            return HI_class_spatial_dic,HI_reclass_spatial_dic
+        spatial_dic = DIC_and_TIF().void_spatial_dic_zero()
+        df = T.spatial_dics_to_df({'__void__':spatial_dic})
+        P_PET_dic_reclass = Dataframe().P_PET_class()
+        df = T.add_spatial_dic_to_df(df, P_PET_dic_reclass, 'HI_reclass')
+        df = T.add_spatial_dic_to_df(df, P_PET_dic_reclass, 'HI_class')
+        df = df.dropna(subset=['HI_class'])
+        df.loc[df['HI_reclass'] != 'Humid', ['HI_reclass']] = 'Non Humid'
+
+        HI_class_spatial_dic = self.df_to_spatial_dic(df,'HI_class')
+        HI_reclass_spatial_dic = self.df_to_spatial_dic(df,'HI_reclass')
+
+        T.save_npy(HI_class_spatial_dic,HI_class_spatial_dic_f)
+        T.save_npy(HI_reclass_spatial_dic,HI_reclass_spatial_dic_f)
+        return HI_class_spatial_dic, HI_reclass_spatial_dic
+
+    def mask_humid_area(self,arr,humid):
+        HI_class_spatial_dic, HI_reclass_spatial_dic = self.__get_humid_nonhumid_dic()
+        dic = DIC_and_TIF().spatial_arr_to_dic(arr)
+        all_dic = {
+            'val':dic,
+            'HI_class':HI_class_spatial_dic,
+            'HI_reclass':HI_reclass_spatial_dic,
+        }
+        df = T.spatial_dics_to_df(all_dic)
+        df = df[df['HI_reclass']==humid]
+        spatial_dic = T.df_to_spatial_dic(df,'val')
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
+        return arr
+
+    def single_correlation_delta_pdf(self,folder_name):
+        fdir = join(self.this_class_tif, folder_name)
+        # outdir = join(self.this_class_tif, folder_name + '_delta')
+        # T.mk_dir(outdir)
+        period_color_dic = {
+            '1-Humid':'r',
+            '2-Non Humid':'g',
+            '1-Non Humid':'b',
+            '2-Humid':'k',
+        }
+        for detrend in ['_detrend', '']:
+            f_list = []
+            for folder in T.listdir(fdir):
+                for f in T.listdir(join(fdir, folder)):
+                    if not f.endswith('r.tif'):
+                        continue
+                    f_list.append(f)
+                break
+            for f in f_list:
+                print(f)
+                plt.figure()
+                for humid in ['Humid','Non Humid']:
+                    for period in [1, 2]:
+                        folder = join(fdir, f'period_{period}{detrend}')
+                        fpath = join(folder, f)
+                        arr = ToRaster().raster2array(fpath)[0]
+                        arr = T.mask_999999_arr(arr, warning=False)
+                        arr = self.mask_humid_area(arr,humid)
+                        # plt.imshow(arr)
+                        # plt.show()
+                        arr_flatten = arr.flatten()
+                        arr_flatten = T.remove_np_nan(arr_flatten)
+                        mean = np.nanmean(arr_flatten)
+                        std = np.nanstd(arr_flatten)
+                        up = mean + 3*std
+                        down = mean - 3*std
+                        x,y = Plot().plot_hist_smooth(arr_flatten,bins=200,alpha=0,range=(down,up))
+                        plt.plot(x,y,label=f'{period}-{humid}',color=period_color_dic[f'{period}-{humid}'])
+                    plt.title(f)
+                    plt.legend()
+                plt.show()
+        pass
+
+
+    def delta_pdf(self,folder_name):
+        fdir = join(self.this_class_tif, folder_name)
+        # outdir = join(self.this_class_tif, folder_name + '_delta')
+        # T.mk_dir(outdir)
+        period_color_dic = {
+            '1-Humid': 'r',
+            '2-Non Humid': 'g',
+            '1-Non Humid': 'b',
+            '2-Humid': 'k',
+        }
+        for detrend in ['_detrend', '']:
+            f_list = []
+            for folder in T.listdir(fdir):
+                for f in T.listdir(join(fdir, folder)):
+                    if not f.endswith('.tif'):
+                        continue
+                    f_list.append(f)
+                break
+            for f in f_list:
+                print(f)
+                plt.figure()
+                for humid in ['Humid', 'Non Humid']:
+                    for period in [1, 2]:
+                        folder = join(fdir, f'period_{period}{detrend}')
+                        fpath = join(folder, f)
+                        arr = ToRaster().raster2array(fpath)[0]
+                        arr = T.mask_999999_arr(arr, warning=False)
+                        arr = self.mask_humid_area(arr, humid)
+                        # plt.imshow(arr)
+                        # plt.show()
+                        arr_flatten = arr.flatten()
+                        arr_flatten = T.remove_np_nan(arr_flatten)
+                        mean = np.nanmean(arr_flatten)
+                        std = np.nanstd(arr_flatten)
+                        up = mean + 3 * std
+                        down = mean - 3 * std
+                        x, y = Plot().plot_hist_smooth(arr_flatten, bins=200, alpha=0, range=(down, up))
+                        plt.plot(x, y, label=f'{period}-{humid}', color=period_color_dic[f'{period}-{humid}'])
+                    plt.title(f)
+                    plt.legend()
+                plt.show()
+        pass
+
+    def single_correlation_delta_tif(self,folder_name):
+
+        fdir = join(self.this_class_tif,folder_name)
+        outdir = join(self.this_class_tif, folder_name+'_delta')
+        T.mk_dir(outdir)
+        for detrend in ['_detrend','']:
+            f_list = []
+            for folder in T.listdir(fdir):
+                for f in T.listdir(join(fdir,folder)):
+                    if not f.endswith('r.tif'):
+                        continue
+                    f_list.append(f)
+                break
+            outdir_i = join(outdir,f'delta{detrend}')
+            T.mk_dir(outdir_i)
+            for f in f_list:
+                print(f)
+                arrs = []
+                for period in [1,2]:
+                    folder = join(fdir,f'period_{period}{detrend}')
+                    fpath = join(folder,f)
+                    arr = ToRaster().raster2array(fpath)[0]
+                    arr = T.mask_999999_arr(arr,warning=False)
+                    arrs.append(arr)
+                    # plt.figure()
+                    # plt.imshow(arr)
+                # plt.show()
+                delta_arr = arrs[1] - arrs[0]
+                DIC_and_TIF().arr_to_tif(delta_arr,join(outdir_i,f))
+
+    def partial_correlation_tif(self):
+        outdir = join(self.this_class_tif,'partial_correlation')
+        T.mk_dir(outdir)
+        for detrend in ['_detrend','']:
+            fdir = join(self.this_class_arr, 'partial_correlation')
+            fdir = fdir + detrend
+            for period in [1,2]:
+                outdir_i = join(outdir,f'period_{period}')
+                outdir_i = outdir_i + detrend
+                T.mk_dir(outdir_i)
+                dff = join(fdir,f'period_{period}.df')
+                df = T.load_df(dff)
+                for col in df:
+                    if col == 'pix':
+                        continue
+                    print(period,col)
+                    val = df[col].tolist()
+                    pix = df['pix'].tolist()
+                    spatial_dic = dict(zip(pix,val))
+                    spatial_dic_new = {}
+                    for pix in spatial_dic:
+                        dic_i = spatial_dic[pix]
+                        if type(dic_i) == dict:
+                            spatial_dic_new[pix] = dic_i
+                    # print(spatial_dic)
+                    # exit()
+                    try:
+                        df_i = T.dic_to_df(spatial_dic_new,'pix')
+                        for col_i in df_i:
+                            if col_i == 'pix':
+                                continue
+                            pix_i = df_i['pix']
+                            val_i = df_i[col_i]
+                            spatial_dic_i = dict(zip(pix_i,val_i))
+                            outf = join(outdir_i,f'{col}_{col_i}.tif')
+                            DIC_and_TIF().pix_dic_to_tif(spatial_dic_i,outf)
+                    except Exception as e:
+                        print(e)
+
+    def multi_regression_tif(self):
+        outdir = join(self.this_class_tif,'multi_regression')
+        T.mk_dir(outdir)
+        for detrend in ['_detrend','']:
+            fdir = join(self.this_class_arr, 'multi_regression')
+            fdir = fdir + detrend
+            for period in [1,2]:
+                outdir_i = join(outdir,f'period_{period}')
+                outdir_i = outdir_i + detrend
+                T.mk_dir(outdir_i)
+                dff = join(fdir,f'period_{period}.df')
+                df = T.load_df(dff)
+                for col in df:
+                    if col == 'pix':
+                        continue
+                    print(period,col)
+                    val = df[col].tolist()
+                    pix = df['pix'].tolist()
+                    spatial_dic = dict(zip(pix,val))
+                    spatial_dic_new = {}
+                    for pix in spatial_dic:
+                        dic_i = spatial_dic[pix]
+                        if type(dic_i) == dict:
+                            spatial_dic_new[pix] = dic_i
+                    try:
+                        df_i = T.dic_to_df(spatial_dic_new,'pix')
+                        for col_i in df_i:
+                            if col_i == 'pix':
+                                continue
+                            pix_i = df_i['pix']
+                            val_i = df_i[col_i]
+                            spatial_dic_i = dict(zip(pix_i,val_i))
+                            outf = join(outdir_i,f'{col}_{col_i}.tif')
+                            DIC_and_TIF().pix_dic_to_tif(spatial_dic_i,outf)
+                    except Exception as e:
+                        print(e)
+
+        pass
 
 def main():
     # Greening().run()
     # Dataframe().run()
     # Analysis().run()
-    Moving_window().run()
+    # Moving_window().run()
+    Two_period_comparison().run()
     # Partial_corr('early').run()
     # Partial_corr('peak').run()
     # Partial_corr('late').run()
-    # check_df_seasonal()
     pass
 
 
