@@ -2,6 +2,7 @@
 import platform
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 from preprocess import *
 results_root_main_flow = join(results_root,'Main_flow')
@@ -23,6 +24,7 @@ class Global_vars:
 
     def clean_df(self,df):
         df = df[df['lat'] > 30]
+        df = df[df['HI_reclass']=='Non Humid']  # focus on dryland
         return df
 
 class Dataframe:
@@ -198,6 +200,205 @@ class Dataframe:
         df = pd.DataFrame(df)
         df = df.dropna(subset=['ndvi_mask_mark'])
         return df
+
+
+class Greening_phenomena:
+
+    def __init__(self):
+        self.this_class_arr,self.this_class_tif,self.this_class_png = T.mk_class_dir('Greening_phenomena',results_root_main_flow)
+        pass
+
+    def run(self):
+        # self.trend_spatial_tif()
+        # self.trend_spatial_pvalue_point_shp()
+        # self.timesereis()
+        # self.moving_window_mean_timeseries()
+        self.moving_window_area_ratio_timeseries()
+        pass
+
+
+    def trend_spatial_tif(self):
+        outdir = join(self.this_class_tif,'trend_spatial_tif')
+        T.mk_dir(outdir)
+        df = Global_vars().load_df()
+        K = KDE_plot()
+        for i in df:
+            str_i = str(i)
+            if not 'LAI_GIMMS' in i:
+                continue
+            spatial_dic_time_series = T.df_to_spatial_dic(df,i)
+            trend_spatial_dic = {}
+            trend_spatial_dic_p = {}
+            outf_p = join(outdir,i+'_p.tif')
+            outf_r = join(outdir,i+'_k.tif')
+            for pix in tqdm(spatial_dic_time_series,desc=str_i):
+                vals = spatial_dic_time_series[pix]
+                if type(vals) == float:
+                    continue
+                x = list(range(len(vals)))
+                y = vals
+                a, b, r, p = K.linefit(x,y)
+                trend_spatial_dic[pix] = a
+                trend_spatial_dic_p[pix] = p
+
+            DIC_and_TIF().pix_dic_to_tif(trend_spatial_dic,outf_r)
+            DIC_and_TIF().pix_dic_to_tif(trend_spatial_dic_p,outf_p)
+
+
+    def trend_spatial_pvalue_point_shp(self):
+        fdir = join(self.this_class_tif,'trend_spatial_tif')
+        outdir = join(self.this_class_tif,'trend_spatial_pvalue_point_shp')
+        T.mk_dir(outdir)
+        for f in T.listdir(fdir):
+            if not f.endswith('_p.tif'):
+                continue
+            intif = join(fdir,f)
+            outtif = join(outdir,f)
+            ToRaster().resample_reproj(intif,outtif,res=1)
+        for f in T.listdir(outdir):
+            out_shp_f = join(outdir,f+'.shp')
+            if not f.endswith('_p.tif'):
+                continue
+            arr = ToRaster().raster2array(join(outdir,f))[0]
+            arr = T.mask_999999_arr(arr,warning=False)
+            arr[arr>0.1] = np.nan
+            dic = DIC_and_TIF().spatial_arr_to_dic(arr)
+            point_list = []
+            for pix in dic:
+                val = dic[pix]
+                if np.isnan(val):
+                    continue
+                lon,lat = DIC_and_TIF(tif_template=join(outdir,f)).pix_to_lon_lat(pix)
+                # print(lon,lat)
+                list_i = [lon,lat,1]
+                point_list.append(list_i)
+            T.point_to_shp(point_list,out_shp_f)
+
+    def timesereis(self):
+        outdir = join(self.this_class_tif, 'timesereis')
+        T.mk_dir(outdir)
+        df = Global_vars().load_df()
+        K = KDE_plot()
+        for i in df:
+            str_i = str(i)
+            if not 'LAI_GIMMS' in i:
+                continue
+            spatial_dic_time_series = T.df_to_spatial_dic(df, i)
+            matrix = []
+            for pix in tqdm(spatial_dic_time_series, desc=str_i):
+                vals = spatial_dic_time_series[pix]
+                if type(vals) == float:
+                    continue
+                matrix.append(vals)
+            matrix = np.array(matrix)
+            matrix_T = matrix.T
+            y = []
+            std_list = []
+
+            for series in matrix_T:
+                mean = np.nanmean(series)
+                std = np.nanstd(series)
+                y.append(mean)
+                std_list.append(std)
+            x = list(range(len(y)))
+            plt.plot(x,y)
+            Plot().plot_line_with_error_bar(x,y,std_list)
+        plt.show()
+
+        pass
+
+    def moving_window_mean_timeseries(self):
+        # y_variable = 'GIMMS_NDVI'
+        # season = 'peak'
+        # humid = 'Non Humid'
+        color_dic = {
+            'early': 'g',
+            'peak': 'r',
+            'late': 'b',
+        }
+        fdir = join(Moving_window().this_class_arr, 'mean')
+        dff = join(fdir, 'mean.df')
+        df = T.load_df(dff)
+        HI_reclass_var = 'HI_reclass'
+        HI_reclass_list = T.get_df_unique_val_list(df, HI_reclass_var)
+        df = df[df[HI_reclass_var] == 'Non Humid']
+
+        window_list = self.__get_window_list(df, 'LAI_GIMMS')
+        # print(window_list)
+        # exit()
+        for xvar in Moving_window().all_var_list:
+            if not 'LAI' in xvar:
+                continue
+            plt.figure()
+            for season in global_season_dic:
+                mean_list = []
+                for w in window_list:
+                    col_name = f'{w}_{season}_{xvar}'
+                    print(col_name)
+                    vals = df[col_name].tolist()
+                    mean = np.nanmean(vals)
+                    mean_list.append(mean)
+                plt.plot(mean_list, color=color_dic[season], label=season)
+            plt.legend()
+            plt.title(xvar)
+        plt.show()
+
+    def moving_window_area_ratio_timeseries(self):
+        y_variable = 'LAI_GIMMS'
+        dff = join(Moving_window().this_class_arr, 'trend', 'trend.df')
+        df_all = T.load_df(dff)
+        for season in global_season_dic:
+            plt.figure()
+            color_list = ['forestgreen', 'limegreen', 'gray', 'peru', 'sienna']
+            K = KDE_plot()
+            y_var = f'{season}_{y_variable}'
+            window_list = self.__get_window_list(df_all,y_var)
+            for w in window_list:
+                df_new = pd.DataFrame()
+                df_new['r'] = df_all[f'{w}_{y_var}_r']
+                df_new['p'] = df_all[f'{w}_{y_var}_p']
+                df_new = df_new.dropna()
+                df_p_non_sig = df_new[df_new['p'] > 0.1]
+                df_p_05 = df_new[df_new['p'] <= 0.1]
+                df_p_05 = df_p_05[df_p_05['p'] >= 0.05]
+                df_p_sig = df_new[df_new['p'] < 0.05]
+                pos_05 = df_p_05[df_p_05['r'] >= 0]
+                neg_05 = df_p_05[df_p_05['r'] < 0]
+                pos_sig = df_p_sig[df_p_sig['r'] >= 0]
+                neg_sig = df_p_sig[df_p_sig['r'] < 0]
+                non_sig_ratio = len(df_p_non_sig) / len(df_new)
+                pos_05_ratio = len(pos_05) / len(df_new)
+                neg_05_ratio = len(neg_05) / len(df_new)
+                pos_sig_ratio = len(pos_sig) / len(df_new)
+                neg_sig_ratio = len(neg_sig) / len(df_new)
+                bars = [pos_sig_ratio, pos_05_ratio, non_sig_ratio, neg_05_ratio, neg_sig_ratio]
+
+                bottom = 0
+                color_flag = 0
+                for b in bars:
+                    plt.bar(f'{w}', b, bottom=bottom, color=color_list[color_flag])
+                    bottom += b
+                    color_flag += 1
+            # plt.title(title)
+            plt.tight_layout()
+        plt.show()
+
+    def moving_window_trend(self):
+
+        pass
+    def __get_window_list(self,df,x_var_1):
+        # x_var_1 = self.x_var_list[0]
+        # x_var_1 = self.y_var
+        window_list = []
+        for col in df:
+            col = str(col)
+            if x_var_1 in col:
+                window = col.split('_')[0]
+                window_list.append(int(window))
+        window_list = T.drop_repeat_val_from_list(window_list)
+        return window_list
+
+    # def
 
 class Partial_corr:
 
@@ -704,7 +905,6 @@ class Analysis:
 
     def greening_slide_partial_corr_area(self,season,y_variable,humid):
         '''
-        todo: next task
         :param season:
         :param y_variable:
         :param humid:
@@ -1642,20 +1842,19 @@ class Moving_window:
     def run(self):
         # self.print_var_list()
 
-        self.single_correlation()
+        # self.single_correlation()
         # self.single_correlation_matrix_plot()
+        self.single_correlation_pdf_plot()
 
         # self.trend()
         # self.trend_time_series_plot()
         # self.trend_matrix_plot()
 
-
         # self.mean()
+        # self.mean_time_series_plot()
         # self.mean_matrix_plot()
 
-
-
-        # self.partial_correlation()
+        self.partial_correlation()
 
         # self.multi_regression()
 
@@ -2952,8 +3151,6 @@ def main():
     # Moving_window().run()
     Two_period_comparison().run()
     # Partial_corr('early').run()
-    # Partial_corr('peak').run()
-    # Partial_corr('late').run()
     pass
 
 
