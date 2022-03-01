@@ -1,5 +1,8 @@
 # coding=utf-8
 import zipfile
+
+import numpy as np
+
 from __init__ import *
 # import ee
 global_land_tif = join(this_root,'conf/land.tif')
@@ -11,10 +14,40 @@ global_season_dic = {
     'peak':(6,7,8),
     'late':(9,10,11),
 }
-class LAI:
+
+vars_info_dic = {
+'LAI_3g': {
+'path':join(data_root, 'LAI_3g/per_pix'),
+'unit': 'm2/m2',
+'start_year':1982,
+},
+'SPEI': {
+'path':join(data_root, 'original_dataset/SPEI3_dic'),
+'unit': 'SPEI',
+'start_year':1982,
+},
+'Temperature': {
+'path':join(data_root, 'original_dataset/temperature_dic'),
+'unit': 'Celsius',
+'start_year':1982,
+},
+'Soil moisture': {
+'path':join(data_root, 'original_dataset/CCI_SM_2020_dic'),
+'unit': 'm3/m3',
+'start_year':1982,
+},
+'CO2': {
+'path':join(data_root, 'original_dataset/CO2_dic'),
+'unit': 'ppm',
+'start_year':1982,
+},
+        }
+
+
+class GLASS_LAI:
 
     def __init__(self):
-        self.datadir = join(data_root,'LAI')
+        self.datadir = join(data_root,'GLASS_LAI')
         pass
 
     def run(self):
@@ -665,6 +698,29 @@ class CCI_SM:
         # plt.colorbar()
         # plt.show()
 
+
+class LAI_3g:
+
+    def __init__(self):
+        self.datadir = join(data_root,'/Volumes/NVME2T/greening_project_redo/data/LAI_3g')
+        pass
+
+    def run(self):
+        self.check_data()
+        pass
+
+    def check_data(self):
+        fdir = join(self.datadir,'per_pix')
+        dic = T.load_npy_dir(fdir)
+        for pix in dic:
+            vals = dic[pix]
+            if np.isnan(np.nanmean(vals)):
+                continue
+            # print(vals)
+            print(len(vals)/12)
+            exit()
+        pass
+
 def seasonal_split_ly_NDVI():
     fdir = join(data_root, 'NDVI_ly/per_pix')
     outdir = join(data_root, 'NDVI_ly/per_pix_seasonal')
@@ -692,7 +748,8 @@ def main():
     # seasonal_split_ly_NDVI()
     # GEE_AVHRR_LAI().run()
     # GLC2000().run()
-    CCI_SM().run()
+    # CCI_SM().run()
+    LAI_3g().run()
     # check_cci_sm()
     # f = '/Volumes/NVME2T/greening_project_redo/data/GEE_AVHRR_LAI/per_pix_clean/per_pix_dic_005.npy'
     # dic = T.load_npy(f)
