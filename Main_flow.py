@@ -228,8 +228,8 @@ class Greening_phenomena:
         # self.trend_spatial_pvalue_point_shp()
         # self.timesereis()
         # self.moving_window_mean_timeseries()
-        # self.moving_window_trend_timeseries()
-        self.moving_window_area_ratio_timeseries()
+        self.moving_window_trend_timeseries()
+        # self.moving_window_area_ratio_timeseries()
         pass
 
 
@@ -373,18 +373,18 @@ class Greening_phenomena:
             'peak': 'r',
             'late': 'b',
         }
-        fdir = join(Moving_window().this_class_arr, 'trend_20')
-        dff = join(fdir, 'trend_20.df')
+        fdir = join(Moving_window().this_class_arr, 'trend')
+        dff = join(fdir, 'trend.df')
         df = T.load_df(dff)
         HI_reclass_var = 'HI_reclass'
         HI_reclass_list = T.get_df_unique_val_list(df, HI_reclass_var)
         df = df[df[HI_reclass_var] == 'Non Humid']
 
-        window_list = self.__get_window_list(df, 'LAI_GIMMS')
+        window_list = self.__get_window_list(df, 'VOD')
         # print(window_list)
         # exit()
         for xvar in Moving_window().all_var_list:
-            if not 'LAI' in xvar:
+            if not 'NDVI' in xvar:
                 continue
             plt.figure()
             for season in global_season_dic:
@@ -3065,13 +3065,14 @@ class Seasonal_time_series:
 
 def main():
     # Dataframe().run()
-    Greening_phenomena().run()
+    # Greening_phenomena().run()
     # Analysis().run()
     # Moving_window().run()
     # Moving_window_RF().run()
     # Two_period_comparison().run()
     # Partial_corr('early').run()
     # Seasonal_time_series().run()
+    RF_late_browning().run()
     pass
 
 
