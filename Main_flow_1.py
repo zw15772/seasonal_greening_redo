@@ -313,18 +313,16 @@ class Phenology:
         # outdir = join(self.datadir,'per_pix_annual')
         # self.data_transform_annual(fdir,outdir)
         # 3 hants smooth
-        self.hants()
+        # self.hants()
         # self.check_hants()
 
         # 4 计算 top left right
-        # self.SOS_EOS()
-        # self.check_SOS_EOS()
+        # self.annual_phenology()
+        # self.compose_annual_phenology()
+        # self.check_compose_hants()
+        # self.longterm_mean_phenology()
+        self.check_lonterm_phenology()
 
-        # 5 合成南北半球
-        # self.compose_SOS_EOS()
-
-        # 6 check sos
-        # self.check_sos()
         pass
 
 
@@ -366,83 +364,13 @@ class Phenology:
             # exit()
         pass
 
-    def split_north_south_hemi(self,fdir,outdir):
-        # 1 north
-        north_dir = outdir + 'north/'
-        south_dir = outdir + 'south/'
-        T.mk_dir(south_dir,force=True)
-        T.mk_dir(north_dir,force=True)
-        years = np.array(range(1982, 2016))
-        for y in tqdm(years):
-            for f in T.listdir(fdir):
-                if not f.endswith('tif'):
-                    continue
-                year = int(f[:4])
-                if y == year:
-                    date = f[4:8]
-                    # print date
-                    # exit()
-                    array,originX,originY,pixelWidth,pixelHeight = to_raster.raster2array(fdir+f)
-                    array_south = copy.copy(array)
-                    array_north = copy.copy(array)
-                    array_south[:180] = -999999.
-                    array_north[180:] = -999999.
-                    north_outdir_y = north_dir + '{}/'.format(y)
-                    south_outdir_y = south_dir + '{}/'.format(y)
-                    Tools().mk_dir(north_outdir_y)
-                    Tools().mk_dir(south_outdir_y)
-                    south_outf = south_outdir_y + date + '.tif'
-                    north_outf = north_outdir_y + date + '.tif'
-                    DIC_and_TIF().arr_to_tif(array_south,south_outf)
-                    DIC_and_TIF().arr_to_tif(array_north,north_outf)
-        # 2 modify south
-        south_modified_dir = outdir + 'south_modified/'
-        T.mk_dir(south_modified_dir)
-        for year in T.listdir(south_dir):
-            outdir_y = south_modified_dir + '{}/'.format(year)
-            T.mk_dir(outdir_y)
-            for f in T.listdir(south_dir + year):
-                mon = f.split('.')[0][:2]
-                day = f.split('.')[0][2:]
-                year = int(year)
-                mon = int(mon)
-                # print 'original date:',year,mon
-                old_fname = south_dir + str(year) + '/' + f
-                mon = mon - 6
-                if mon <= 0:
-                    year_new = year - 1
-                    mon_new = mon + 12
-                    new_fname = south_modified_dir + '{}/{:02d}{}.tif'.format(year_new,mon_new,day)
-                else:
-                    new_fname = south_modified_dir + '{}/{:02d}{}.tif'.format(year,mon,day)
-
-                # print old_fname
-                # print new_fname
-                try:
-                    shutil.copy(old_fname,new_fname)
-                except Exception as e:
-                    # print e
-                    continue
-
-
-
-    def split_files(self,fdir,outdir):
-        Tools().mk_dir(outdir)
-        years = np.array(range(1982, 2016))
-        for y in tqdm(years):
-            for f in T.listdir(fdir):
-                year = int(f[:4])
-                if y == year:
-                    outdir_y = outdir + '{}/'.format(y)
-                    Tools().mk_dir(outdir_y)
-                    shutil.copy(fdir + f, outdir_y + f)
-
 
     def kernel_hants(self, params):
         outdir, y, fdir = params
         outf = join(outdir,y)
         dic = T.load_npy_dir(join(fdir,y))
         hants_dic = {}
+        spatial_dic = {}
         for pix in tqdm(dic,desc=y):
             r,c = pix
             if r > 180:
@@ -451,18 +379,23 @@ class Phenology:
             vals = np.array(vals)
             if T.is_all_nan(vals):
                 continue
+            print(vals)
+            vals = T.interp_nan(vals)
+            print(vals)
+            print('---')
+            spatial_dic[pix] = 1
             xnew, ynew = self.__interp__(vals)
             std = np.nanstd(ynew)
             std = float(std)
             ynew = np.array([ynew])
-            # print np.std(ynew)
             results = HANTS().HANTS(sample_count=365, inputs=ynew, low=0, high=10,
                             fit_error_tolerance=std)
             result = results[0]
             if T.is_all_nan(result):
                 continue
             hants_dic[pix] = result
-        T.save_npy(hants_dic,outf)
+        # T.save_npy(hants_dic,outf)
+        exit()
 
     def hants(self):
         outdir = join(self.this_class_arr,'hants')
@@ -471,30 +404,56 @@ class Phenology:
         params = []
         for y in T.listdir(fdir):
             params.append([outdir, y, fdir])
-            # self.kernel_hants([outdir, y, fdir])
-        MULTIPROCESS(self.kernel_hants, params).run(process=4)
+            self.kernel_hants([outdir, y, fdir])
+        # MULTIPROCESS(self.kernel_hants, params).run(process=4)
 
     def check_hants(self):
-        hemi = 'south_modified'
-        fdir = self.this_class_arr + 'hants_smooth/{}/'.format(hemi)
-        tropical_mask_dic = NDVI().tropical_mask_dic
-
+        fdir = join(self.this_class_arr,'hants')
         for year in T.listdir(fdir):
-            perpix_dir = fdir + '{}/'.format(year)
-            for f in T.listdir(perpix_dir):
-                if not '021' in f:
-                    continue
-                dic = T.load_npy(perpix_dir + f)
-                for pix in dic:
-                    if pix in tropical_mask_dic:
-                        continue
-                    vals = dic[pix]
-                    if len(vals) > 0:
-                        # print pix,vals
-                        plt.plot(vals)
-                        plt.show()
-                        sleep()
+            f = '/Volumes/NVME2T/greening_project_redo/results/Main_flow_1/arr/Phenology/1983.npy'
+            dic = T.load_npy(f)
+            # dic = T.load_npy(join(fdir,year))
+            spatial_dic = {}
+            for pix in dic:
+                vals = dic[pix]
+                spatial_dic[pix] = len(vals)
+                # print(len(vals))
+                # exit()
+                # if len(vals) > 0:
+                #     # print pix,vals
+                #     plt.plot(vals)
+                #     plt.show()
+            arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
+            DIC_and_TIF().plot_back_ground_arr(global_land_tif)
+            plt.imshow(arr)
+            plt.show()
             exit()
+    def check_compose_hants(self):
+        fdir = join(self.this_class_arr,'hants')
+        f = '/Volumes/NVME2T/greening_project_redo/results/Main_flow_1/arr/Phenology/compose_Early_Peak_Late_pick/phenology_dataframe.df'
+        df = T.load_df(f)
+        dic = T.df_to_dic(df,'pix')
+        # dic = T.load_npy(join(fdir,year))
+        spatial_dic = {}
+        for pix in dic:
+            vals = dic[pix]
+            for key in vals:
+                val = vals[key]
+                print(key)
+                print(val)
+            exit()
+            spatial_dic[pix] = len(vals)
+            # print(len(vals))
+            # exit()
+            # if len(vals) > 0:
+            #     # print pix,vals
+            #     plt.plot(vals)
+            #     plt.show()
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
+        DIC_and_TIF().plot_back_ground_arr(global_land_tif)
+        plt.imshow(arr)
+        plt.show()
+        exit()
 
     def __interp__(self, vals):
 
@@ -542,37 +501,163 @@ class Phenology:
 
         return ind
 
-    def SOS_EOS(self, threshold_i=0.5):
-        for hemi in ['north','south_modified']:
-            out_dir = self.this_class_arr + 'SOS_EOS/threshold_{}/{}/'.format(threshold_i,hemi)
-            Tools().mk_dir(out_dir, force=1)
-            # fdir = data_root + 'NDVI_phenology/HANTS/'
-            fdir = self.this_class_arr + 'hants_smooth/{}/'.format(hemi)
-            for y in tqdm(T.listdir(fdir)):
-                year_dir = fdir + y + '/'
-                result_dic = {}
-                for f in T.listdir(year_dir):
-                    dic = dict(np.load(year_dir + f).item())
-                    for pix in dic:
-                        try:
-                            vals = dic[pix]
-                            maxind = np.argmax(vals)
-                            start = self.__search_left(vals, maxind, threshold_i)
-                            end = self.__search_right(vals, maxind, threshold_i)
-                            result = [start,maxind, end]
-                            result_dic[pix] = result
-                            # print result
-                            # sleep()
-                        except:
-                            pass
-                            # plt.plot(vals)
-                            # plt.show()
-                            # exit()
-                        # plt.plot(vals)
-                        # plt.plot(range(start,end),vals[start:end],linewidth=4,zorder=99,color='r')
-                        # plt.title('start:{} \nend:{} \nduration:{}'.format(start,end,end-start))
-                        # plt.show()
-                np.save(out_dir + y, result_dic)
+    def __median_early_late(self,vals,sos,eos,peak):
+        # 2 使用sos-peak peak-eos中位数作为sos和eos的结束和开始
+
+        median_left = int((peak-sos)/2.)
+        median_right = int((eos - peak)/2)
+        max_ind = median_left + sos
+        min_ind = median_right + peak
+        return max_ind, min_ind
+
+    def __day_to_month(self,doy):
+        base = datetime.datetime(2000,1,1)
+        time_delta = datetime.timedelta(int(doy))
+        date = base + time_delta
+        month = date.month
+        day = date.day
+        if day > 15:
+            month = month + 1
+        if month >= 12:
+            month = 12
+        return month
+
+    # def SOS_EOS(self, threshold_i=0.5):
+    #     out_dir = join(self.this_class_arr,'SOS_EOS')
+    #     T.mk_dir(out_dir)
+    #     fdir = join(self.this_class_arr,'hants')
+    #     for y in tqdm(T.listdir(fdir)):
+    #         dic = T.load_npy(join(fdir,y))
+    #         result_dic = {}
+    #         for pix in dic:
+    #             try:
+    #                 vals = dic[pix]
+    #                 maxind = np.argmax(vals)
+    #                 start = self.__search_left(vals, maxind, threshold_i)
+    #                 end = self.__search_right(vals, maxind, threshold_i)
+    #                 # result = [start,maxind, end]
+    #                 result = {
+    #                     'SOS':start,
+    #                     'Peak':maxind,
+    #                     'EOS':end,
+    #                 }
+    #                 result_dic[pix] = result
+    #             except:
+    #                 pass
+    #         df = T.dic_to_df(result_dic,'pix')
+
+    def pick_phenology(self,vals,threshold_i):
+        peak = np.argmax(vals)
+        if peak == 0 or peak == (len(vals) - 1):
+            return {}
+        try:
+            early_start = self.__search_left(vals, peak, threshold_i)
+            late_end = self.__search_right(vals, peak, threshold_i)
+        except:
+            early_start = 60
+            late_end = 130
+            print(vals)
+            plt.plot(vals)
+            plt.show()
+        # method 1
+        # early_end, late_start = self.__slope_early_late(vals,early_start,late_end,peak)
+        # method 2
+        early_end, late_start = self.__median_early_late(vals, early_start, late_end, peak)
+
+        early_period = early_end - early_start
+        peak_period = late_start - early_end
+        late_period = late_end - late_start
+        dormant_period = 365 - (late_end - early_start)
+
+        result = {
+            'early_length': early_period,
+            'mid_length': peak_period,
+            'late_length': late_period,
+            'dormant_length': dormant_period,
+            'early_start': early_start,
+            'early_start_mon': self.__day_to_month(early_start),
+
+            'early_end': early_end,
+            'early_end_mon': self.__day_to_month(early_end),
+
+            'peak': peak,
+            'peak_mon': self.__day_to_month(peak),
+
+            'late_start': late_start,
+            'late_start_mon': self.__day_to_month(late_start),
+
+            'late_end': late_end,
+            'late_end_mon': self.__day_to_month(late_end),
+        }
+        return result
+        pass
+
+
+    def annual_phenology(self,threshold_i=0.2):
+        out_dir = join(self.this_class_arr, 'annual_phenology')
+        T.mk_dir(out_dir)
+        hants_smooth_dir = join(self.this_class_arr, 'hants')
+        for f in T.listdir(hants_smooth_dir):
+            year = int(f.split('.')[0])
+            outf_i = join(out_dir,f'{year}.df')
+            hants_smooth_f = join(hants_smooth_dir,f)
+            hants_dic = T.load_npy(hants_smooth_f)
+            result_dic = {}
+            for pix in tqdm(hants_dic,desc=str(year)):
+                vals = hants_dic[pix]
+                result = self.pick_phenology(vals,threshold_i)
+                result_dic[pix] = result
+            df = T.dic_to_df(result_dic,'pix')
+            T.save_df(df,outf_i)
+            T.df_to_excel(df,outf_i)
+            # np.save(outf_i,result_dic)
+
+    def compose_annual_phenology(self):
+        f_dir = join(self.this_class_arr, 'annual_phenology')
+        outdir = join(self.this_class_arr,'compose_annual_phenology')
+        T.mk_dir(outdir)
+        outf = join(outdir,'phenology_dataframe.df')
+        all_result_dic = {}
+        pix_list_all = []
+        col_list = None
+        for f in T.listdir(f_dir):
+            if not f.endswith('.df'):
+                continue
+            df = T.load_df(join(f_dir,f))
+            pix_list = T.get_df_unique_val_list(df,'pix')
+            pix_list_all.append(pix_list)
+            col_list = df.columns
+        all_pix = []
+        for pix_list in pix_list_all:
+            for pix in pix_list:
+                all_pix.append(pix)
+        pix_list = T.drop_repeat_val_from_list(all_pix)
+
+        col_list = col_list.to_list()
+        col_list.remove('pix')
+        for pix in pix_list:
+            dic_i = {}
+            for col in col_list:
+                dic_i[col] = {}
+            all_result_dic[pix] = dic_i
+        # print(len(T.listdir(f_dir)))
+        # exit()
+        for f in tqdm(T.listdir(f_dir)):
+            if not f.endswith('.df'):
+                continue
+            year = int(f.split('.')[0])
+            df = T.load_df(join(f_dir,f))
+            dic = T.df_to_dic(df,'pix')
+            for pix in dic:
+                for col in dic[pix]:
+                    if col == 'pix':
+                        continue
+                    all_result_dic[pix][col][year] = dic[pix][col]
+        df_all = T.dic_to_df(all_result_dic,'pix')
+        T.save_df(df_all,outf)
+        T.df_to_excel(df_all,outf)
+
+
 
     def check_SOS_EOS(self,threshold_i=0.5):
         fdir = self.this_class_arr + 'SOS_EOS/threshold_{}/north/'.format(threshold_i)
@@ -609,16 +694,68 @@ class Phenology:
             Pre_Process().data_transform_with_date_list(fdir,outdir_i,annual_f_list)
             print(annual_f_list)
             print(year)
-
             # exit()
         # Pre_Process().monthly_compose()
-
-
-
-
         exit()
 
+    def all_year_hants(self):
+        fdir = join(self.this_class_arr,'hants')
+        outdir = join(self.this_class_arr,'all_year_hants')
+        T.mk_dir(outdir)
+        pix_list = None
+        for f in T.listdir(fdir):
+            dic = T.load_npy(join(fdir,f))
+            pix_list = []
+            for pix in dic:
+                pix_list.append(pix)
+            break
+        hants_vals_all_year_dic = {}
+        for pix in pix_list:
+            hants_vals_all_year_dic[pix] = []
+        for f in T.listdir(fdir):
+            print(f)
+            dic = T.load_npy(join(fdir,f))
+            for pix in dic:
+                vals = dic[pix]
+                if not pix in hants_vals_all_year_dic:
+                    continue
+                for val in vals:
+                    hants_vals_all_year_dic[pix].append(val)
+        T.save_distributed_perpix_dic(hants_vals_all_year_dic,outdir,1000)
+
+
+    def longterm_mean_phenology(self,threshold=0.2):
+        fdir = join(self.this_class_arr,'all_year_hants')
+        outdir = join(self.this_class_arr,'longterm_mean_phenology')
+        T.mk_dir(outdir)
+        outf = join(outdir,'longterm_mean_phenology.df')
+        result_dic = {}
+        for f in tqdm(T.listdir(fdir)):
+            dic = T.load_npy(join(fdir,f))
+            for pix in dic:
+                vals = dic[pix]
+                vals_reshape = np.reshape(vals,(-1,365))
+                annual_mean_vals = np.mean(vals_reshape,axis=0)
+                result = self.pick_phenology(annual_mean_vals,threshold)
+                result_dic[pix] =result
+        df = T.dic_to_df(result_dic,'pix')
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
         pass
+
+    def check_lonterm_phenology(self):
+        f = join(self.this_class_arr,'longterm_mean_phenology/longterm_mean_phenology.df')
+        df = T.load_df(f)
+        cols = df.columns
+        print(cols)
+
+        spatial_dic = T.df_to_spatial_dic(df,'dormant_length')
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
+        plt.imshow(arr)
+        plt.colorbar()
+        plt.show()
+        pass
+
 
 class Get_Monthly_Early_Peak_Late:
 
@@ -1108,8 +1245,8 @@ class Analysis:
         pass
 
     def run(self):
-        # self.Greeing_trend()
-        self.Greeing_trend_3_season()
+        self.Greeing_trend()
+        # self.Greeing_trend_3_season()
         # self.Greeing_trend_two_period()
         # self.Jan_to_Dec_timeseries()
         pass
@@ -1153,15 +1290,15 @@ class Analysis:
                 y = vals
                 a, b, r, p = self.nan_linear_fit(x,y)
                 trend_dic[pix] = a
-            out_tif = join(outdir,f'{season}.tif')
-            DIC_and_TIF().pix_dic_to_tif(trend_dic,out_tif)
-            # arr = DIC_and_TIF().pix_dic_to_spatial_arr(trend_dic)
-            # plt.figure()
-            # plt.imshow(arr,vmax=0.02,vmin=-0.02,cmap='RdBu')
-            # plt.colorbar()
-            # DIC_and_TIF().plot_back_ground_arr(Global_vars().land_tif)
-            # plt.title(season)
-        # plt.show()
+            # out_tif = join(outdir,f'{season}.tif')
+            # DIC_and_TIF().pix_dic_to_tif(trend_dic,out_tif)
+            arr = DIC_and_TIF().pix_dic_to_spatial_arr(trend_dic)
+            plt.figure()
+            plt.imshow(arr,vmax=0.02,vmin=-0.02,cmap='RdBu')
+            plt.colorbar()
+            DIC_and_TIF().plot_back_ground_arr(Global_vars().land_tif)
+            plt.title(season)
+        plt.show()
         pass
 
     def Greeing_trend_3_season(self):
