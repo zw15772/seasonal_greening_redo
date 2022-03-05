@@ -316,10 +316,12 @@ class Phenology:
         # self.hants()
         # self.check_hants()
 
-        # 4 计算 top left right
         # self.annual_phenology()
         # self.compose_annual_phenology()
         # self.check_compose_hants()
+        # self.all_year_hants_annual()
+        # self.all_year_hants_annual_mean()
+        # self.all_year_hants()
         # self.longterm_mean_phenology()
         self.check_lonterm_phenology()
 
@@ -723,6 +725,74 @@ class Phenology:
                     hants_vals_all_year_dic[pix].append(val)
         T.save_distributed_perpix_dic(hants_vals_all_year_dic,outdir,1000)
 
+    def all_year_hants_annual(self):
+        fdir = join(self.this_class_arr,'hants')
+        outdir = join(self.this_class_arr,'all_year_hants_annual')
+        year_list = list(range(1982,2999))
+        T.mk_dir(outdir)
+        pix_list = None
+        for f in T.listdir(fdir):
+            dic = T.load_npy(join(fdir,f))
+            pix_list = []
+            for pix in dic:
+                pix_list.append(pix)
+            break
+        hants_vals_all_year_dic = {}
+        for pix in pix_list:
+            hants_vals_all_year_dic[pix] = []
+        for f in T.listdir(fdir):
+            print(f)
+            dic = T.load_npy(join(fdir,f))
+            for pix in dic:
+                vals = dic[pix]
+                if not pix in hants_vals_all_year_dic:
+                    continue
+                for val in vals:
+                    hants_vals_all_year_dic[pix].append(val)
+        hants_vals_all_year_dic_annual_dic = {}
+        for pix in tqdm(hants_vals_all_year_dic):
+            vals = hants_vals_all_year_dic[pix]
+            vals = np.array(vals)
+            vals_reshape = np.reshape(vals,(-1,365))
+            dic_i = dict(zip(year_list,vals_reshape))
+            dic_i = dic_i.items()
+            dic_i = list(dic_i)
+            dic_i = np.array(dic_i,dtype=object)
+            hants_vals_all_year_dic_annual_dic[pix] = dic_i
+        T.save_distributed_perpix_dic(hants_vals_all_year_dic_annual_dic,outdir,1000)
+
+    def all_year_hants_annual_mean(self):
+        fdir = join(self.this_class_arr,'hants')
+        outdir = join(self.this_class_arr,'all_year_hants_annual_mean')
+        year_list = list(range(1982,2999))
+        T.mk_dir(outdir)
+        pix_list = None
+        for f in T.listdir(fdir):
+            dic = T.load_npy(join(fdir,f))
+            pix_list = []
+            for pix in dic:
+                pix_list.append(pix)
+            break
+        hants_vals_all_year_dic = {}
+        for pix in pix_list:
+            hants_vals_all_year_dic[pix] = []
+        for f in T.listdir(fdir):
+            print(f)
+            dic = T.load_npy(join(fdir,f))
+            for pix in dic:
+                vals = dic[pix]
+                if not pix in hants_vals_all_year_dic:
+                    continue
+                for val in vals:
+                    hants_vals_all_year_dic[pix].append(val)
+        hants_vals_all_year_dic_annual_mean_dic = {}
+        for pix in tqdm(hants_vals_all_year_dic):
+            vals = hants_vals_all_year_dic[pix]
+            vals = np.array(vals)
+            vals_reshape = np.reshape(vals,(-1,365))
+            vals_reshape_mean = np.mean(vals_reshape,axis=0)
+            hants_vals_all_year_dic_annual_mean_dic[pix] = vals_reshape_mean
+        T.save_distributed_perpix_dic(hants_vals_all_year_dic_annual_mean_dic,outdir,10000)
 
     def longterm_mean_phenology(self,threshold=0.2):
         fdir = join(self.this_class_arr,'all_year_hants')
@@ -748,8 +818,8 @@ class Phenology:
         df = T.load_df(f)
         cols = df.columns
         print(cols)
-
-        spatial_dic = T.df_to_spatial_dic(df,'dormant_length')
+        # exit()
+        spatial_dic = T.df_to_spatial_dic(df,'late_end_mon')
         arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
         plt.imshow(arr)
         plt.colorbar()
@@ -811,7 +881,7 @@ class Get_Monthly_Early_Peak_Late:
             }
             result_dic[pix] = result_dic_i
         df = T.dic_to_df(result_dic,'pix')
-        df = df.dropna()
+        # df = df.dropna()
         T.save_df(df,outf)
         T.df_to_excel(df,outf)
 
@@ -1245,10 +1315,12 @@ class Analysis:
         pass
 
     def run(self):
-        self.Greeing_trend()
+        # self.Greeing_trend()
         # self.Greeing_trend_3_season()
         # self.Greeing_trend_two_period()
         # self.Jan_to_Dec_timeseries()
+        # self.early_peak_greening_speedup_advanced_sos()
+        self.check()
         pass
 
 
@@ -1438,15 +1510,128 @@ class Analysis:
         # T.mk_dir(outdir,force=True)
         pass
 
+    def P_PET_dic_reclass(self,P_PET_dic_class):
+        reclass_dic = {}
+        for pix in P_PET_dic_class:
+            val = P_PET_dic_class[pix]
+            if not val == 'Humid':
+                val_new = 'Non Humid'
+            else:
+                val_new = 'Humid'
+            reclass_dic[pix] = val_new
+        return reclass_dic
 
+    def early_peak_greening_speedup_advanced_sos(self):
+        outdir = join(self.this_class_arr,'early_peak_greening_speedup_advanced_sos')
+        T.mk_dir(outdir)
+        outf = join(outdir,'result.npy')
+        # region filter
+        P_PET_dic_class = Main_flow.Dataframe().P_PET_class()
+        P_PET_dic_reclass = self.P_PET_dic_reclass(P_PET_dic_class)
+        P_PET_dic_reclass_reverse = T.reverse_dic(P_PET_dic_reclass)
+        non_humid_pix_list = P_PET_dic_reclass_reverse['Non Humid']
+        non_humid_pix_list = set(non_humid_pix_list)
 
+        # load phenology files
+        annual_hants_fdir = join(Phenology().this_class_arr,'all_year_hants_annual')
+        long_term_hants_fdir = join(Phenology().this_class_arr,'all_year_hants_annual_mean')
+        phenology_longterm_dff = join(Phenology().this_class_arr,'longterm_mean_phenology/longterm_mean_phenology.df')
+        phenology_annual_dff = join(Phenology().this_class_arr,'compose_annual_phenology/phenology_dataframe.df')
+        annual_vals_dic = T.load_npy_dir(annual_hants_fdir)
+        long_term_vals_dic = T.load_npy_dir(long_term_hants_fdir)
+        phenology_longterm_df = T.load_df(phenology_longterm_dff)
+        phenology_annual_df = T.load_df(phenology_annual_dff)
+        phenology_longterm_dic = T.df_to_dic(phenology_longterm_df,'pix')
+        phenology_annual_dic = T.df_to_dic(phenology_annual_df,'pix')
+
+        # analysis
+
+        # phenology columns:
+        ###############################
+        # dormant_length
+        # early_end	early_end_mon	early_length	early_start	early_start_mon
+        # late_end	late_end_mon	late_length	late_start	late_start_mon
+        # mid_length	peak	peak_mon
+        ###############################
+        result_dic = {}
+        for pix in tqdm(long_term_vals_dic):
+            # if not pix in non_humid_pix_list:
+            #     continue
+            long_term_vals = long_term_vals_dic[pix]
+            annual_vals_dic_i = annual_vals_dic[pix]
+            annual_vals_dic_i = dict(annual_vals_dic_i)
+            if not pix in phenology_longterm_dic:
+                continue
+            phenology_longterm_dic_i = phenology_longterm_dic[pix]
+            phenology_annual_dic_i = phenology_annual_dic[pix]
+            early_start_longterm = phenology_longterm_dic_i['early_start']
+            early_end_longterm = phenology_longterm_dic_i['early_end']
+            late_start_longterm = phenology_longterm_dic_i['late_start']
+            peak_period_longterm = list(range(early_end_longterm, late_start_longterm))
+            early_period_longterm = list(range(early_start_longterm, early_end_longterm))
+
+            early_vals_long_term = T.pick_vals_from_1darray(long_term_vals,early_period_longterm)
+            peak_vals_long_term = T.pick_vals_from_1darray(long_term_vals,peak_period_longterm)
+            early_vals_long_term_mean = np.mean(early_vals_long_term)
+            peak_vals_long_term_mean = np.mean(peak_vals_long_term)
+            picked_year = []
+            for year in annual_vals_dic_i:
+                annual_vals = annual_vals_dic_i[year]
+                if not year in phenology_annual_dic_i['early_start']:
+                    continue
+                early_start = phenology_annual_dic_i['early_start'][year]
+                early_end = phenology_annual_dic_i['early_end'][year]
+                late_start = phenology_annual_dic_i['late_start'][year]
+                # condition 1: advanced SOS
+                if early_start > early_start_longterm:
+                    continue
+                # condition 2: early mean > long term early mean
+                early_period_annual = list(range(early_start,early_end))
+                early_vals_annual = T.pick_vals_from_1darray(annual_vals,early_period_annual)
+                early_vals_annual_mean = np.mean(early_vals_annual)
+                if early_vals_annual_mean < early_vals_long_term_mean:
+                    continue
+                # condition 3: peak mean > long term peak mean
+                peak_period_annual = list(range(early_end, late_start))
+                peak_vals_annual = T.pick_vals_from_1darray(annual_vals, peak_period_annual)
+                peak_vals_annual_mean = np.mean(peak_vals_annual)
+                if peak_vals_annual_mean < peak_vals_long_term_mean:
+                    continue
+                picked_year.append(year)
+            if len(picked_year) == 0:
+                continue
+            result_dic[pix] = picked_year
+            #     plt.plot(annual_vals,label=str(year))
+            # plt.plot(long_term_vals,color='k',lw=4)
+            # plt.scatter(early_start_longterm,long_term_vals[early_start_longterm],s=80,zorder=99,color='r')
+            # plt.scatter(early_end_longterm,long_term_vals[early_end_longterm],s=80,zorder=99,color='r')
+            # plt.scatter(late_start_longterm,long_term_vals[late_start_longterm],s=80,zorder=99,color='r')
+            # plt.legend()
+            # plt.show()
+            # exit()
+        T.save_npy(result_dic,outf)
+    def check(self):
+        f = '/Volumes/NVME2T/greening_project_redo/results/Main_flow_1/arr/Analysis/early_peak_greening_speedup_advanced_sos/result.npy'
+        dic = T.load_npy(f)
+        spatial_dic = {}
+        for pix in dic:
+            vals = dic[pix]
+            spatial_dic[pix] = len(vals)
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
+        std = np.nanstd(arr)
+        mean = np.nanmean(arr)
+        up = mean + std
+        down = mean - std
+        plt.imshow(arr,vmin=down,vmax=up)
+        plt.colorbar()
+        plt.show()
 
 def main():
-    Phenology().run()
+    # Phenology().run()
     # Get_Monthly_Early_Peak_Late().run()
     # Pick_Early_Peak_Late_value().run()
     # RF().run()
-    # Analysis().run()
+    Analysis().run()
     # Global_vars().get_valid_pix_df()
 
     pass

@@ -152,7 +152,12 @@ class Dataframe:
         vals[vals < down] = np.nan
         return vals
 
-    def P_PET_class(self,):
+    def P_PET_class(self):
+        outdir = join(self.this_class_arr,'P_PET_class')
+        T.mk_dir(outdir)
+        outf = join(outdir,'P_PET_class.npy')
+        if isfile(outf):
+            return T.load_npy(outf)
         dic = self.P_PET_ratio(self.P_PET_fdir)
         dic_reclass = {}
         for pix in dic:
@@ -172,6 +177,7 @@ class Dataframe:
                 label = 'Semi Humid'
                 # label = 2
             dic_reclass[pix] = label
+        T.save_npy(dic_reclass,outf)
         return dic_reclass
 
     def P_PET_ratio(self,P_PET_fdir):
