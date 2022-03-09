@@ -1055,7 +1055,7 @@ class RF:
 
     def run(self):
         self.build_df()
-        # self.cal_importance()
+        self.cal_importance()
         pass
 
     def __var_list_train(self):
@@ -1177,15 +1177,15 @@ class RF:
     def build_df(self):
         df = self.__gen_df_init()
 
-        # season_list = Global_vars().season_list()
-        # var_list = self.x_var_list
-        # col_list = []
-        # for var_ in var_list:
-        #     for season in season_list:
-        #         print(var_,season)
-        #         col_name = f'{season}_{var_}'
-        #         col_list.append(col_name)
-        #         df = self.add_each_season_to_df(df,var_,season)
+        season_list = Global_vars().season_list()
+        var_list = self.x_var_list
+        col_list = []
+        for var_ in var_list:
+            for season in season_list:
+                print(var_,season)
+                col_name = f'{season}_{var_}'
+                col_list.append(col_name)
+                df = self.add_each_season_to_df(df,var_,season)
         # df = df.dropna(how='all',subset=col_list)
 
         # combine_season_list = ['early','peak']
@@ -1384,6 +1384,20 @@ class RF:
         return df
 
 
+
+class Moving_window_RF:
+    def __init__(self):
+        pass
+
+    def run(self):
+
+        pass
+
+    def build_df(self):
+
+
+        pass
+
 class Analysis:
 
     def __init__(self):
@@ -1395,15 +1409,17 @@ class Analysis:
         # self.Greeing_trend()
         # self.Greeing_trend_combine()
         # self.SOS_trend()
-        self.carry_over_effect_bar_plot()
+        # self.carry_over_effect_bar_plot()
         # self.Greeing_trend_3_season_line()
         # self.Greeing_trend_two_period()
         # self.Jan_to_Dec_timeseries()
+        # self.Jan_to_Dec_timeseries_sos_condition()
         # self.Jan_to_Dec_timeseries_hants()
         # self.early_peak_greening_speedup_advanced_sos()
         # self.check()
         # self.carry_over_effect_with_sm()
         # self.inter_annual_carryover_effect()
+        self.correlation_lai_sm()
         pass
 
 
@@ -1458,38 +1474,71 @@ class Analysis:
     def carry_over_effect_bar_plot(self):
         # carry over trend < 0 humid region, see sos trend
         humid_region_var = 'HI_reclass'
-        region = 'Non Humid'
-        mode = 'early-peak_late'
-        carryover_tif = join(Moving_window().this_class_tif,f'array_carry_over_effect/trend/{mode}.tif')
+        sos_trend_var = 'sos_trend'  # original values trend
+        carryover_trend_var = 'carryover_trend'  # moving window
+        carryover_trend_p_var = 'carryover_trend_p'  # moving window
+        sm_early_trend_var = 'sm_early_trend'  # original values trend
+        sm_peak_trend_var = 'sm_peak_trend'  # original values trend
+        sm_late_trend_var = 'sm_late_trend'  # original values trend
+        lai_combine_trend_var = 'lai_combine_trend'  # original values trend
+
+        mode = 'early-peak_late'  # carryover effect mode
+        carryover_tif = join(Moving_window().this_class_tif,f'array_carry_over_effect/trend/{mode}.tif')  # moving window
+        carryover_p_tif = join(Moving_window().this_class_tif,f'array_carry_over_effect/trend/{mode}_p.tif')  # moving window
         sos_tif = join(self.this_class_tif,'SOS_trend/SOS_trend.tif')
         sm_early_tif = join(self.this_class_tif,'Greeing_trend/Soil moisture/early.tif')
         sm_peak_tif = join(self.this_class_tif,'Greeing_trend/Soil moisture/peak.tif')
         sm_late_tif = join(self.this_class_tif,'Greeing_trend/Soil moisture/late.tif')
+        lai_combine_tif = join(self.this_class_tif,'Greeing_trend_combine/LAI_3g/early-peak_LAI_3g.tif')
+
         carryover_dic = DIC_and_TIF().spatial_tif_to_dic(carryover_tif)
+        carryover_p_dic = DIC_and_TIF().spatial_tif_to_dic(carryover_p_tif)
         sos_dic = DIC_and_TIF().spatial_tif_to_dic(sos_tif)
         sm_early_dic = DIC_and_TIF().spatial_tif_to_dic(sm_early_tif)
         sm_peak_dic = DIC_and_TIF().spatial_tif_to_dic(sm_peak_tif)
         sm_late_dic = DIC_and_TIF().spatial_tif_to_dic(sm_late_tif)
+        lai_combine_dic = DIC_and_TIF().spatial_tif_to_dic(lai_combine_tif)
+
         spatial_dic_all = {
             'carryover_trend':carryover_dic,
+            'carryover_trend_p':carryover_p_dic,
             'sos_trend':sos_dic,
             'sm_early_trend':sm_early_dic,
             'sm_peak_trend':sm_peak_dic,
             'sm_late_trend':sm_late_dic,
+            'lai_combine_trend':lai_combine_dic,
         }
         df = T.spatial_dics_to_df(spatial_dic_all)
         df = Dataframe().add_Humid_nonhumid(df)
+        df = df.dropna()
+        df = df[df[carryover_trend_p_var]<0.05]
         T.print_head_n(df)
-        exit()
-        # df = df[df[humid_region_var]==region]
-        # df = df[df['carryover_trend']<0]
-        # sm_trend_dic = T.df_to_spatial_dic(df,'sm_trend')
-        # arr = DIC_and_TIF().pix_dic_to_spatial_arr(sm_trend_dic)
-        # sm_trend = np.nanmean(arr)
-        # print(sm_trend)
-        # plt.imshow(arr)
-        # plt.colorbar()
-        # plt.show()
+        # exit()
+        region_list = T.get_df_unique_val_list(df,humid_region_var)
+        carryover_trend_list = ['Carryover(+)','Carryover(-)',]
+        for region in region_list:
+            df_region = df[df[humid_region_var]==region]
+            for carryover_trend in carryover_trend_list:
+                if carryover_trend == 'Carryover(+)':
+                    df_carryover_trend = df_region[df_region[carryover_trend_var]>0]
+                elif carryover_trend == 'Carryover(-)':
+                    df_carryover_trend = df_region[df_region[carryover_trend_var]<0]
+                else:
+                    raise
+                sos_trend = df_carryover_trend[sos_trend_var].tolist()
+                sm_early_trend = df_carryover_trend[sm_early_trend_var].tolist()
+                sm_peak_trend = df_carryover_trend[sm_peak_trend_var].tolist()
+                sm_late_trend = df_carryover_trend[sm_late_trend_var].tolist()
+                lai_combine_trend = df_carryover_trend[lai_combine_trend_var].tolist()
+                plt.figure()
+                plt.bar('sos_trend',np.nanmean(sos_trend)/50.)
+                plt.bar('sm_early_trend',np.nanmean(sm_early_trend)*10)
+                plt.bar('sm_peak_trend',np.nanmean(sm_peak_trend)*10)
+                plt.bar('sm_late_trend',np.nanmean(sm_late_trend)*10)
+                plt.bar('lai_combine_trend',np.nanmean(lai_combine_trend))
+                plt.title(f'{region}_{carryover_trend}')
+        plt.show()
+
         pass
 
     def Greeing_trend(self):
@@ -1766,6 +1815,84 @@ class Analysis:
         pass
 
 
+    def get_phenology_spatial_dic(self,var_name,isanomaly=False):
+        sos_dff = join(Phenology().this_class_arr, 'compose_annual_phenology/phenology_dataframe.df')
+        sos_df = T.load_df(sos_dff)
+        early_start_dic = T.df_to_spatial_dic(sos_df, var_name)
+        phenology_dic = {}
+        for pix in early_start_dic:
+            year_list = []
+            dic_i = early_start_dic[pix]
+            if isanomaly:
+                for year in dic_i:
+                    year_list.append(year)
+                year_list.sort()
+                val_list = []
+                for year in year_list:
+                    val = dic_i[year]
+                    val_list.append(val)
+                val_list_anomaly = Pre_Process().cal_anomaly_juping(val_list)
+                dic_i_anomaly = dict(zip(year_list, val_list_anomaly))
+                phenology_dic[pix] = dic_i_anomaly
+            else:
+                phenology_dic[pix] = dic_i
+        return phenology_dic
+
+
+
+    def Jan_to_Dec_timeseries_sos_condition(self):
+        y_var = 'LAI_3g'
+
+        lai_dir = vars_info_dic[y_var]['path']
+        start_year = vars_info_dic[y_var]['start_year']
+        lai_dic = T.load_npy_dir(lai_dir)
+        phenology_dic = self.get_phenology_spatial_dic('early_start')
+        all_spatial_dic = {
+            'lai':lai_dic,
+            'sos':phenology_dic
+        }
+        # region = 'Humid'
+        region = 'Non Humid'
+        df = T.spatial_dics_to_df(all_spatial_dic)
+        df = Dataframe().add_Humid_nonhumid(df)
+        # df = df[df['HI_reclass']=='Non Humid']
+        df = df[df['HI_reclass']==region]
+        df = df.dropna()
+        lai_dic = T.df_to_spatial_dic(df,'lai')
+        early_start_dic_anomaly = T.df_to_spatial_dic(df,'sos')
+
+        year_list = list(range(start_year, 9999))
+        matrix = []
+        for pix in tqdm(lai_dic):
+            if not pix in early_start_dic_anomaly:
+                continue
+            vals = lai_dic[pix]
+            vals = T.detrend_vals(vals)
+            vals = Pre_Process().z_score_climatology(vals)
+            # vals = Pre_Process().cal_anomaly_juping(vals)
+            vals_reshape = np.reshape(vals, (-1, 12))
+            dic_i = dict(zip(year_list, vals_reshape))
+            early_start_dic_anomaly_i = early_start_dic_anomaly[pix]
+            if type(early_start_dic_anomaly_i) == float:
+                continue
+            for year in dic_i:
+                if not year in early_start_dic_anomaly_i:
+                    continue
+                sos_anomaly = early_start_dic_anomaly_i[year]
+                # if sos_anomaly < 0:
+                if sos_anomaly > 0:
+                    matrix.append(dic_i[year])
+            # vals_2017 = dic_i[2017]
+            # if np.nanmean(vals_2018[:7]) < 0.1:
+            # all_vals_2017.append(vals_2017)
+        monthly_val = np.nanmean(matrix, axis=0)
+        # plt.plot(monthly_val_2017,label='2017')
+        plt.plot(monthly_val)
+        # plt.legend()
+        plt.title(region)
+        plt.show()
+        pass
+
     def P_PET_dic_reclass(self,P_PET_dic_class):
         reclass_dic = {}
         for pix in P_PET_dic_class:
@@ -2032,6 +2159,61 @@ class Analysis:
         plt.show()
         pass
 
+
+    def correlation_lai_sm(self):
+        outdir = join(self.this_class_tif,'correlation_lai_sm')
+
+        var1 = 'LAI_3g'
+        var2 = 'Soil moisture'
+        var1_start_year = vars_info_dic[var1]['start_year']
+        var2_start_year = vars_info_dic[var2]['start_year']
+        var1_season = 'peak_LAI_3g'
+        var2_season = 'late_Soil moisture'
+        outf = join(outdir,f'{var1_season}-{var2_season}.tif')
+        outf_p = join(outdir,f'{var1_season}-{var2_season}_p.tif')
+        outf_sos = join(outdir,f'advanced_sos_year_number.tif')
+        T.mk_dir(outdir)
+        early_start_dic = self.get_phenology_spatial_dic('early_start',isanomaly=True)
+        df = Global_vars().load_df()
+        var1_dic = T.df_to_spatial_dic(df,var1_season)
+        var2_dic = T.df_to_spatial_dic(df,var2_season)
+        spatial_dic = {}
+        spatial_dic_p = {}
+        advanced_sos_dic = {}
+        for pix in tqdm(var1_dic):
+            if not pix in early_start_dic:
+                continue
+            sos = early_start_dic[pix]
+            sos_reverse = T.reverse_dic(sos)
+            advanced_sos_year = []
+            for sos_i in sos_reverse:
+                if sos_i < 0:
+                    years = sos_reverse[sos_i]
+                    for year in years:
+                        advanced_sos_year.append(year)
+            advanced_sos_year.sort()
+            advanced_sos_dic[pix] = len(advanced_sos_year)
+            advanced_sos_year = np.array(advanced_sos_year)
+            val1 = var1_dic[pix]
+            val2 = var2_dic[pix]
+            if T.is_all_nan(val1):
+                continue
+            if T.is_all_nan(val2):
+                continue
+            val1_pick = T.pick_vals_from_1darray(val1, advanced_sos_year - var1_start_year)
+            val2_pick = T.pick_vals_from_1darray(val2, advanced_sos_year - var2_start_year)
+            r,p = T.nan_correlation(val1,val2)
+            spatial_dic[pix] = r
+            spatial_dic_p[pix] = p
+        DIC_and_TIF().pix_dic_to_tif(spatial_dic,outf)
+        DIC_and_TIF().pix_dic_to_tif(spatial_dic_p,outf_p)
+        DIC_and_TIF().pix_dic_to_tif(advanced_sos_dic,outf_sos)
+        # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
+        # plt.imshow(arr)
+        # plt.colorbar()
+        # plt.show()
+        pass
+
 class Dataframe:
 
     def __init__(self):
@@ -2243,13 +2425,13 @@ class Moving_window:
 
         # self.array()
         # self.array_carry_over_effect()
-        self.array_carry_over_effect_spatial_trend()
+        # self.array_carry_over_effect_spatial_trend()
 
         # self.mean()
         # self.mean_time_series_plot()
         # self.mean_matrix_plot()
 
-        # self.partial_correlation()
+        self.carryover_partial_correlation()
         # self.pdf_plot('partial_correlation_orign_nodetrend')
         # self.pdf_plot('partial_correlation_orign_detrend')
         # self.pdf_plot('partial_correlation_anomaly_nodetrend')
@@ -2404,18 +2586,17 @@ class Moving_window:
         T.save_df(df_result,outf)
         T.df_to_excel(df_result,outf)
 
-    def partial_correlation(self):
-        # outdir = join(self.this_class_arr,'partial_correlation_orign_nodetrend')
-        # outdir = join(self.this_class_arr,'partial_correlation_orign_detrend')
-        # outdir = join(self.this_class_arr,'partial_correlation_anomaly_nodetrend')
-        outdir = join(self.this_class_arr,'partial_correlation_anomaly_detrend')
+    def carryover_partial_correlation(self):
+        outdir = join(self.this_class_arr,'carryover_partial_correlation')
         T.mk_dir(outdir)
         start_year = global_start_year
         moving_window_index_list = self.__gen_moving_window_index(start_year,self.end_year)
         df = self.__load_df()
         x_var_list,y_var,all_vars_list = self.__partial_corr_var_list()
         pix_list = T.get_df_unique_val_list(df,'pix')
-
+        print(x_var_list)
+        print(y_var)
+        exit()
         for n in range(len(moving_window_index_list)):
             outf = join(outdir, f'{n:02d}-{len(moving_window_index_list)}_partial_correlation.df')
             window_index = np.array(moving_window_index_list[n], dtype=int)
@@ -3213,12 +3394,14 @@ class Moving_window:
                         xval = x_spatial_dic[pix]
                         if type(xval) == float:
                             continue
+                        # xval = Pre_Process().cal_anomaly_juping(xval)
                         window_index = np.array(moving_window_index_list[n],dtype=int)
                         window_index = window_index - global_start_year
                         window_index = [int(i) for i in window_index]
                         # print(window_index)
                         try:
                             xval_pick = T.pick_vals_from_1darray(xval,window_index)
+                            xval_pick = Pre_Process().cal_anomaly_juping(xval_pick)
                             results_dic[pix][f'{n:02d}_{season}_{x}'] = xval_pick
                         except:
                             continue
@@ -3277,11 +3460,12 @@ class Moving_window:
 
 
     def array_carry_over_effect_spatial_trend(self):
-        corr_mode = 'early_late'
+        # corr_mode = 'early_late'
         # corr_mode = 'peak_late'
-        # corr_mode = 'early-peak_late'
+        corr_mode = 'early-peak_late'
         outdir = join(self.this_class_tif,f'array_carry_over_effect/trend/')
         outf = join(outdir,f'{corr_mode}.tif')
+        outf_p = join(outdir,f'{corr_mode}_p.tif')
         T.mk_dir(outdir)
         fdir = join(self.this_class_tif,f'array_carry_over_effect/{corr_mode}')
         all_dic = {}
@@ -3298,18 +3482,17 @@ class Moving_window:
             pix_list.append(pix)
 
         spatial_dic_trend = {}
+        spatial_dic_trend_p = {}
         for pix in tqdm(pix_list):
             vals_list = []
             for w in window_list:
                 val = all_dic[w][pix]
                 vals_list.append(val)
-            a,_,_,_ = T.nan_line_fit(list(range(len(vals_list))),vals_list)
+            a,_,_,p = T.nan_line_fit(list(range(len(vals_list))),vals_list)
             spatial_dic_trend[pix] = a
+            spatial_dic_trend_p[pix] = p
         DIC_and_TIF().pix_dic_to_tif(spatial_dic_trend,outf)
-        # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic_trend)
-        # plt.imshow(arr,cmap='RdBu',vmin=-0.05,vmax=0.05)
-        # plt.colorbar()
-        # plt.show()
+        DIC_and_TIF().pix_dic_to_tif(spatial_dic_trend_p,outf_p)
         pass
 
 
@@ -3343,15 +3526,97 @@ class Moving_window:
                 plt.title(season)
             plt.show()
 
+
+class Drought_event:
+
+    def __init__(self):
+
+        pass
+
+    def run(self):
+        # self.shp_to_raster()
+        self.plot_seasonal_line()
+        pass
+
+    def shp_to_raster(self):
+        in_shp = join(this_root,'conf/Europe.shp')
+        output_raster = join(this_root,'conf/Europe.tif')
+        pixel_size = 0.5
+        in_raster_template = join(this_root,'conf/land.tif')
+        ToRaster().shp_to_raster(in_shp, output_raster, pixel_size, in_raster_template=in_raster_template)
+
+        pass
+
+    def plot_seasonal_line(self):
+        y_var = 'LAI_3g'
+        europe_tif = join(this_root,'conf/Europe.tif')
+        europe_dic = DIC_and_TIF().spatial_tif_to_dic(europe_tif)
+        sos_dff = join(Phenology().this_class_arr,'compose_annual_phenology/phenology_dataframe.df')
+        sos_df = T.load_df(sos_dff)
+        early_start_dic = T.df_to_spatial_dic(sos_df,'early_start')
+        early_start_dic_anomaly = {}
+        for pix in early_start_dic:
+            year_list = []
+            dic_i = early_start_dic[pix]
+            for year in dic_i:
+                year_list.append(year)
+            year_list.sort()
+            val_list = []
+            for year in year_list:
+                val = dic_i[year]
+                val_list.append(val)
+            val_list_anomaly = Pre_Process().cal_anomaly_juping(val_list)
+            dic_i_anomaly = dict(zip(year_list,val_list_anomaly))
+            early_start_dic_anomaly[pix] = dic_i_anomaly
+
+        europe_pix = []
+        for pix in europe_dic:
+            val = europe_dic[pix]
+            if val == 1:
+                europe_pix.append(pix)
+        lai_dir = vars_info_dic[y_var]['path']
+        start_year = vars_info_dic[y_var]['start_year']
+        lai_dic = T.load_npy_dir(lai_dir)
+        lai_df = T.spatial_dics_to_df({'lai':lai_dic})
+        Dataframe().add
+        print(lai_df)
+        exit()
+        year_list = list(range(start_year,9999))
+        all_vals_2018 = []
+        all_vals_2017 = []
+        pick_year = 2010
+        for pix in tqdm(europe_pix):
+            vals = lai_dic[pix]
+            vals = T.detrend_vals(vals)
+            vals = Pre_Process().z_score_climatology(vals)
+            # vals = Pre_Process().cal_anomaly_juping(vals)
+            vals_reshape = np.reshape(vals,(-1,12))
+            dic_i = dict(zip(year_list,vals_reshape))
+            vals_2018 = dic_i[pick_year]
+            # vals_2017 = dic_i[2017]
+            # if np.nanmean(vals_2018[:7]) < 0.1:
+            all_vals_2018.append(vals_2018)
+            # all_vals_2017.append(vals_2017)
+        monthly_val_2018 = np.nanmean(all_vals_2018,axis=0)
+        monthly_val_2017 = np.nanmean(all_vals_2017,axis=0)
+        # plt.plot(monthly_val_2017,label='2017')
+        plt.plot(monthly_val_2018,label=f'{pick_year}')
+        plt.legend()
+        plt.show()
+
+
+
 def main():
     # Phenology().run()
     # Get_Monthly_Early_Peak_Late().run()
     # Pick_Early_Peak_Late_value().run()
     # Dataframe().run()
     # RF().run()
-    Analysis().run()
-    # Moving_window().run()
+    # Moving_window_RF().run()
+    # Analysis().run()
+    Moving_window().run()
     # Global_vars().get_valid_pix_df()
+    # Drought_event().run()
 
     pass
 
