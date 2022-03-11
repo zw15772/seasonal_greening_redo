@@ -9,11 +9,11 @@ global_land_tif = join(this_root,'conf/land.tif')
 global_start_year = 1982
 # global_end_year = 2018
 # global_end_year = 2015
-global_season_dic = {
-    'early':(3,4,5),
-    'peak':(6,7,8),
-    'late':(9,10,11),
-}
+global_season_dic = [
+    'early',
+    'peak',
+    'late',
+]
 
 vars_info_dic = {
 'LAI_3g': {
@@ -39,6 +39,16 @@ vars_info_dic = {
 'CO2': {
 'path':join(data_root, 'original_dataset/CO2_dic'),
 'unit': 'ppm',
+'start_year':1982,
+},
+'Aridity': {
+'path':join(data_root, 'original_dataset/aridity_P_PET_dic'),
+'unit': 'P/PET(mm/mm)',
+'start_year':1982,
+},
+'VPD': {
+'path':join(data_root, 'original_dataset/VPD_dic'),
+'unit': 'VPD',
 'start_year':1982,
 },
         }
