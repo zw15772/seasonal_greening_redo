@@ -1409,7 +1409,7 @@ class Analysis:
         # self.Greeing_trend()
         # self.Greeing_trend_combine()
         # self.Greeing_trend_sos_conditon()
-        self.plot_pdf_Greeing_trend_sos_conditon()
+        # self.plot_pdf_Greeing_trend_sos_conditon()
         # self.SOS_trend()
         # self.carry_over_effect_bar_plot()
         # self.Greeing_trend_3_season_line()
@@ -1423,7 +1423,9 @@ class Analysis:
         # self.check()
         # self.carry_over_effect_with_sm()
         # self.inter_annual_carryover_effect()
-        # self.correlation_advanced_sos()
+        self.correlation_advanced_sos()
+        # self.correlation_sos_vs_vegetation()
+        # self.correlation_pdf_sos_vs_vegetation()
         # self.correlation_positive_sos_trend()
         # self.carryover_effect_sm()
         pass
@@ -2460,34 +2462,39 @@ class Analysis:
 
 
     def correlation_advanced_sos(self):
-        outdir = join(self.this_class_tif,'correlation_advanced_sos')
-
-        var1 = 'LAI_3g'
-        # var2 = 'Soil moisture'
+        outdir = join(self.this_class_png,'correlation_advanced_sos')
+        T.open_path_and_file(outdir)
+        # var1 = 'LAI_3g'
+        var1 = 'Soil moisture'
         var2 = 'LAI_3g'
         var1_start_year = vars_info_dic[var1]['start_year']
         var2_start_year = vars_info_dic[var2]['start_year']
-        var1_season = f'early-peak_{var1}'
-        var2_season = f'late_{var2}'
-        outf = join(outdir,f'{var1_season}-{var2_season}_delayed.tif')
-        outf_p = join(outdir,f'{var1_season}-{var2_season}_p_delayed.tif')
-        outf_sos = join(outdir,f'advanced_sos_year_number.tif')
+        # var1_season = f'early-peak-late_{var1}'
+        var1_season = f'late_{var1}'
+        var2_season = f'early_{var2}'
+        outf_pdf = join(outdir,f'{var1_season}-{var2_season}_advanced.pdf')
+        outf_tif = join(outdir,f'{var1_season}-{var2_season}_advanced_spatial.pdf')
+        # outf_p = join(outdir,f'{var1_season}-{var2_season}_p_delayed.pdf')
+        # outf_sos = join(outdir,f'advanced_sos_year_number.tif')
         T.mk_dir(outdir)
         early_start_dic = self.get_phenology_spatial_dic('early_start',isanomaly=True)
         df = Global_vars().load_df()
+        region_list = T.get_df_unique_val_list(df,'HI_reclass')
+        region_dic = T.df_to_spatial_dic(df,'HI_reclass')
+        region_dic_reverse = T.reverse_dic(region_dic)
         # print(df.columns)
         # exit()
         season_list = var1_season.split('_')[0]
         combine_list = []
         for season in season_list.split('-'):
             combine_list.append(f'{season}_{var1}')
+        # print(combine_list)
+        # exit()
         df = T.combine_df_columns(df,combine_list,f'{season_list}_{var1}',)
 
         var1_dic = T.df_to_spatial_dic(df,var1_season)
         var2_dic = T.df_to_spatial_dic(df,var2_season)
         spatial_dic = {}
-        spatial_dic_p = {}
-        advanced_sos_dic = {}
         for pix in tqdm(var1_dic):
             if not pix in early_start_dic:
                 continue
@@ -2495,32 +2502,48 @@ class Analysis:
             sos_reverse = T.reverse_dic(sos)
             advanced_sos_year = []
             for sos_i in sos_reverse:
-                if sos_i > 0:
+                if sos_i < 0:
                     years = sos_reverse[sos_i]
                     for year in years:
                         advanced_sos_year.append(year)
             advanced_sos_year.sort()
-            advanced_sos_dic[pix] = len(advanced_sos_year)
             advanced_sos_year = np.array(advanced_sos_year)
             val1 = var1_dic[pix]
             val2 = var2_dic[pix]
-            if T.is_all_nan(val1):
-                continue
-            if T.is_all_nan(val2):
+            try:
+                if T.is_all_nan(val1):
+                    continue
+                if T.is_all_nan(val2):
+                    continue
+            except:
                 continue
             val1_pick = T.pick_vals_from_1darray(val1, advanced_sos_year - var1_start_year)
             val2_pick = T.pick_vals_from_1darray(val2, advanced_sos_year - var2_start_year)
             r,p = T.nan_correlation(val1_pick,val2_pick)
             spatial_dic[pix] = r
-            spatial_dic_p[pix] = p
-        DIC_and_TIF().pix_dic_to_tif(spatial_dic,outf)
-        DIC_and_TIF().pix_dic_to_tif(spatial_dic_p,outf_p)
-        DIC_and_TIF().pix_dic_to_tif(advanced_sos_dic,outf_sos)
-        # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
-        # plt.imshow(arr)
-        # plt.colorbar()
-        # plt.show()
-        pass
+            # spatial_dic_p[pix] = p
+        for region in region_list:
+            region_pix = region_dic_reverse[region]
+            selected_val = []
+            for pix in spatial_dic:
+                if pix in region_pix:
+                    selected_val.append(spatial_dic[pix])
+            selected_val = T.remove_np_nan(selected_val)
+            x,y = Plot().plot_hist_smooth(selected_val,bins=80,alpha=0)
+            plt.plot(x,y,label=region)
+        plt.legend()
+        plt.title(f'{var1_season}-{var2_season}_advanced_sos')
+        plt.savefig(outf_pdf)
+
+        plt.figure(figsize=(10,6))
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
+        plt.imshow(arr,vmin=-0.8,vmax=0.8,aspect='auto')
+        plt.colorbar()
+        DIC_and_TIF().plot_back_ground_arr_north_sphere(global_land_tif,aspect='auto')
+        plt.title(f'{var1_season}-{var2_season}_advanced_sos')
+        plt.savefig(outf_tif)
+
+
     def correlation_positive_sos_trend(self):
         outdir = join(self.this_class_tif,'correlation_positive_sos_trend')
 
@@ -2579,6 +2602,142 @@ class Analysis:
         # plt.colorbar()
         # plt.show()
         pass
+
+
+    def sort_dic_key(self,dic:dict):
+        key_list = []
+        for key in dic:
+            key_list.append(key)
+        key_list.sort()
+        return key_list
+
+    def correlation_sos_vs_vegetation(self):
+        outdir = join(self.this_class_png,'correlation_sos_vs_vegetation')
+        T.mk_dir(outdir)
+        T.open_path_and_file(outdir)
+        y_var = 'LAI_3g'
+        condition_list = ['Advanced SOS','Delayed SOS','All SOS']
+        start_year = vars_info_dic[y_var]['start_year']
+        early_start_dic = self.get_phenology_spatial_dic('early_start',isanomaly=True)
+        df = Global_vars().load_df()
+        df = Dataframe().combine_season(df,y_var)
+        global_season_dic.append('all_gs')
+        year_list_all = list(range(start_year,9999))
+        for condition in condition_list:
+            outdir_i = join(outdir,condition)
+            T.mk_dir(outdir_i)
+            for season in global_season_dic:
+                col_name = f'{season}_{y_var}'
+                spatial_dic = T.df_to_spatial_dic(df,col_name)
+                corr_dic = {}
+                for pix in tqdm(spatial_dic,desc=season):
+                    vege_vals = spatial_dic[pix]
+                    if T.is_all_nan(vege_vals):
+                        continue
+                    vege_dic = dict(zip(year_list_all,vege_vals))
+                    if not pix in early_start_dic:
+                        continue
+                    sos_dic_i = early_start_dic[pix]
+                    year_list = self.sort_dic_key(sos_dic_i)
+                    vege_vals_pick = []
+                    sos_pick = []
+                    for year in year_list:
+                        sos = sos_dic_i[year]
+                        if condition == 'Advanced SOS':
+                            if sos < 0:
+                                vege_vals_pick.append(vege_dic[year])
+                                sos_pick.append(sos)
+                        elif condition == 'Delayed SOS':
+                            if sos > 0:
+                                vege_vals_pick.append(vege_dic[year])
+                                sos_pick.append(sos)
+                        elif condition == 'All SOS':
+                            vege_vals_pick.append(vege_dic[year])
+                            sos_pick.append(sos)
+                        else:
+                            raise
+                    r,p = T.nan_correlation(vege_vals_pick,sos_pick)
+                    corr_dic[pix] = r
+                outf = join(outdir_i,f'{y_var}_{season}.pdf')
+                # DIC_and_TIF().pix_dic_to_tif(corr_dic,outf)
+                arr = DIC_and_TIF().pix_dic_to_spatial_arr(corr_dic)
+                plt.figure(figsize=(8,4))
+                plt.imshow(arr,vmin=-0.8,vmax=0.8,aspect='auto')
+                plt.colorbar()
+                DIC_and_TIF().plot_back_ground_arr_north_sphere(global_land_tif,aspect='auto')
+                # plt.show()
+                plt.title(f'{condition}_{y_var}_{season}')
+                plt.savefig(outf)
+                plt.close()
+
+
+    def correlation_pdf_sos_vs_vegetation(self):
+        outdir = join(self.this_class_png,'correlation_pdf_sos_vs_vegetation')
+        T.mk_dir(outdir)
+        T.open_path_and_file(outdir)
+        y_var = 'LAI_3g'
+        region_var = 'HI_reclass'
+        condition_list = ['Advanced SOS','Delayed SOS','All SOS']
+        start_year = vars_info_dic[y_var]['start_year']
+        early_start_dic = self.get_phenology_spatial_dic('early_start',isanomaly=True)
+        df = Global_vars().load_df()
+        df = Dataframe().combine_season(df,y_var)
+        region_list = T.get_df_unique_val_list(df,region_var)
+        region_dic = T.df_to_spatial_dic(df,region_var)
+        region_dic_reverse = T.reverse_dic(region_dic)
+        global_season_dic.append('all_gs')
+        year_list_all = list(range(start_year,9999))
+        for condition in condition_list:
+            outdir_i = join(outdir,condition)
+            T.mk_dir(outdir_i)
+            for season in global_season_dic:
+                col_name = f'{season}_{y_var}'
+                spatial_dic = T.df_to_spatial_dic(df,col_name)
+                corr_dic = {}
+                for pix in tqdm(spatial_dic,desc=season):
+                    vege_vals = spatial_dic[pix]
+                    if T.is_all_nan(vege_vals):
+                        continue
+                    vege_dic = dict(zip(year_list_all,vege_vals))
+                    if not pix in early_start_dic:
+                        continue
+                    sos_dic_i = early_start_dic[pix]
+                    year_list = self.sort_dic_key(sos_dic_i)
+                    vege_vals_pick = []
+                    sos_pick = []
+                    for year in year_list:
+                        sos = sos_dic_i[year]
+                        if condition == 'Advanced SOS':
+                            if sos < 0:
+                                vege_vals_pick.append(vege_dic[year])
+                                sos_pick.append(sos)
+                        elif condition == 'Delayed SOS':
+                            if sos > 0:
+                                vege_vals_pick.append(vege_dic[year])
+                                sos_pick.append(sos)
+                        elif condition == 'All SOS':
+                            vege_vals_pick.append(vege_dic[year])
+                            sos_pick.append(sos)
+                        else:
+                            raise
+                    r,p = T.nan_correlation(vege_vals_pick,sos_pick)
+                    corr_dic[pix] = r
+                outf = join(outdir_i,f'{y_var}_{season}.pdf')
+                # DIC_and_TIF().pix_dic_to_tif(corr_dic,outf)
+                for region in region_list:
+                    region_pix = region_dic_reverse[region]
+                    picked_corr = []
+                    for pix in corr_dic:
+                        if pix in region_pix:
+                            picked_corr.append(corr_dic[pix])
+                    picked_corr = T.remove_np_nan(picked_corr)
+                    x,y = Plot().plot_hist_smooth(picked_corr,bins=80,alpha=0)
+                    plt.plot(x,y,label=region)
+                plt.legend()
+                plt.title(f'{condition}_{y_var}_{season}')
+                # plt.show()
+                plt.savefig(outf)
+                plt.close()
 
 
     def carryover_effect_sm(self):
@@ -2665,9 +2824,9 @@ class Dataframe:
         return df
 
 
-    def combine_season(self,df):
-        combine_col_list = ['early_LAI_3g', 'late_LAI_3g', 'peak_LAI_3g',]
-        new_col_name = 'gs_LAI_3g'
+    def combine_season(self,df,yvar):
+        combine_col_list = [f'early_{yvar}', f'late_{yvar}', f'peak_{yvar}',]
+        new_col_name = f'all_gs_{yvar}'
         df = T.combine_df_columns(df,combine_col_list,new_col_name)
         return df
         pass
