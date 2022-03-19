@@ -4,7 +4,7 @@ import zipfile
 import numpy as np
 
 from __init__ import *
-# import ee
+import ee
 global_land_tif = join(this_root,'conf/land.tif')
 global_start_year = 1982
 # global_end_year = 2018
@@ -34,6 +34,11 @@ vars_info_dic = {
 'Soil moisture': {
 'path':join(data_root, 'original_dataset/CCI_SM_2020_dic'),
 'unit': 'm3/m3',
+'start_year':1982,
+},
+'Precipitation': {
+'path':join(data_root, 'original_dataset/Precip_dic'),
+'unit': 'mm',
 'start_year':1982,
 },
 'CO2': {
@@ -398,6 +403,248 @@ class GEE_AVHRR_LAI:
                 annual_dic[pix] = annual_vals
             outf = join(outdir,season)
             T.save_npy(annual_dic,outf)
+
+
+class GEE_MODIS_LAI:
+    def __init__(self):
+        self.datadir = join(data_root,'GEE_MODIS_LAI')
+        self.product = 'MODIS/006/MOD15A2H'
+        T.mk_dir(self.datadir)
+        pass
+
+    def run(self):
+        # self.download_AVHRR_LAI_from_GEE()
+        # zip_folder = join(self.datadir,'download_AVHRR_LAI_from_GEE')
+        # tif_dir = join(self.datadir,'tif')
+        # self.unzip(zip_folder,tif_dir)
+        # self.resample()
+        # self.unify_raster()
+        # self.per_pix()
+        self.per_pix_clean()
+        # self.seasonal_split()
+        pass
+
+    def get_download_url(self,datatype="LANDSAT/LC08/C01/T1_32DAY_NDVI",
+                         start='2000-01-01',
+                         end='2000-02-01',
+                         ):
+        print(start,end)
+        dataset = ee.ImageCollection(datatype).filterDate(start, end)
+        LAI = dataset.select('Lai_500m')
+        image = LAI.max()
+        LAI = image.divide(10).rename('LAI')
+        try:
+            path = LAI.getDownloadUrl({
+                'scale': 40000,
+                'crs': 'EPSG:4326',
+            })
+        except:
+            return None
+
+        return path
+    def download_AVHRR_LAI_from_GEE(self):
+        ee.Initialize()
+        outdir = join(self.datadir, 'download_AVHRR_LAI_from_GEE')
+        T.mk_dir(outdir)
+        date_list = []
+        for y in range(2000,2021):
+            for m in range(1,13):
+                date = f'{y}-{m:02d}-01'
+                date_list.append(date)
+        date_list.append('2021-01-01')
+        # print(date_list)
+        for i in tqdm(range(len(date_list))):
+            if i + 1 >= len(date_list):
+                continue
+            start = date_list[i]
+            end = date_list[i+1]
+            url = self.get_download_url(datatype=self.product,start=start,end=end)
+            f = f'{start}.zip'
+            fpath = join(outdir,f)
+            self.download_data(url,fpath)
+
+
+
+    def download_data(self,url, file_name):
+
+        path = file_name
+        if not os.path.isfile(path):
+            # success = 0
+            attempt = 0
+            while 1:
+                try:
+                    with open(path, "wb") as f:
+                        response = requests.get(url, stream=True)
+                        total_length = 25. * 1024. * 1024.
+
+                        if total_length is None:  # no content length header
+                            f.write(response.content)
+                        else:
+                            dl = 0
+                            total_length = int(total_length)
+                            for data in response.iter_content(chunk_size=1024):
+                                dl += len(data)
+                                f.write(data)
+                                done = int(50 * dl / total_length)
+                                sys.stdout.write("\r[%s%s]" % ('=' * done, ' ' * (50 - done)))
+                                sys.stdout.flush()
+                    success = 1
+                except Exception as e:
+                    attempt += 1
+                    time.sleep(1)
+                    success = 0
+                if success == 1:
+                    break
+                if attempt > 10:
+                    break
+        else:
+            pass
+
+    def unzip(self,zipfolder,move_dst_folder):
+        T.mk_dir(move_dst_folder)
+        for zipf in T.listdir(zipfolder):
+            zipf_split = zipf.split('-')
+            tif_name = ''.join([zipf_split[0],zipf_split[1]]) + '.tif'
+            zip_path = join(zipfolder,zipf)
+            # move_dst_folder = this_root+'tif\\'
+            outpath = join(move_dst_folder,tif_name)
+            if not os.path.isfile(outpath):
+                zip_ref = zipfile.ZipFile(zip_path, 'r')
+                zip_ref.extractall(temporary_root)
+                zip_ref.close()
+
+                file_list = T.listdir(temporary_root)
+                for i in file_list:
+                    if i.endswith('.tif'):
+                        temp_f = join(temporary_root,i)
+                        shutil.move(temp_f,outpath)
+            else:
+                print(move_dst_folder+tif_name+' is existed')
+
+
+    def resample(self):
+        fdir = join(self.datadir,'tif')
+        outdir = join(self.datadir,'tif_05')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir,f)
+            outpath = join(outdir,f)
+            ToRaster().resample_reproj(fpath, outpath, 0.5)
+
+    def unify_raster(self):
+        fdir = join(self.datadir, 'tif_05')
+        outdir = join(self.datadir, 'tif_unify')
+        T.mk_dir(outdir)
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            outpath = join(outdir,f)
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
+            array = array[1:]
+            ToRaster().array2raster(outpath,-180, 90, pixelWidth, pixelHeight, array)
+        pass
+
+    def per_pix(self):
+        fdir = join(self.datadir,'tif_unify')
+        outdir = join(self.datadir,'per_pix')
+        f_list = []
+        for y in range(2001,2021):
+            for m in range(1,13):
+                f = f'{y}{m:02d}.tif'
+                f_list.append(f)
+        Pre_Process().data_transform_with_date_list(fdir,outdir,f_list)
+        pass
+
+    def per_pix_clean(self):
+        fdir = join(self.datadir,'per_pix')
+        outdir = join(self.datadir,'per_pix_clean')
+        Pre_Process().clean_per_pix(fdir,outdir,mode='climatology')
+
+    def interp_nan_climatology(self,vals):
+        vals = np.array(vals)
+        vals_reshape = np.reshape(vals,(-1,12))
+        vals_reshape_T = vals_reshape.T
+        month_mean = []
+        for m in vals_reshape_T:
+            mean = np.nanmean(m)
+            month_mean.append(mean)
+        nan_index = np.isnan(vals)
+        val_new = []
+        for i in range(len(nan_index)):
+            isnan = nan_index[i]
+            month = i % 12
+            interp_val = month_mean[month]
+            if isnan:
+                val_new.append(interp_val)
+            else:
+                val_new.append(vals[i])
+        val_new = np.array(val_new)
+
+    def __get_pheno_df(self):
+        fdir = join(data_root,'Phenology')
+        spatial_dics = {}
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            col_name = f.replace('.npy','')
+            dic = T.load_npy(fpath)
+            spatial_dic = {}
+            for pix in dic:
+                vals = dic[pix]
+                if len(vals) == 0:
+                    continue
+                val = vals[0]
+                spatial_dic[pix] = val
+            spatial_dics[col_name] = spatial_dic
+        df = T.spatial_dics_to_df(spatial_dics)
+        early_range_list = []
+        peak_range_list = []
+        late_range_list = []
+        for i,row in df.iterrows():
+            early_end_mon = row.early_end_mon
+            early_start_mon = row.early_start_mon
+            late_end_mon = row.late_end_mon
+            late_start_mon = row.late_start_mon
+            early_range = list(range(early_start_mon,early_end_mon+1))
+            peak_range = list(range(early_end_mon,late_start_mon+1))
+            late_range = list(range(late_start_mon,late_end_mon+1))
+            early_range_list.append(early_range)
+            peak_range_list.append(peak_range)
+            late_range_list.append(late_range)
+        early_range_list = np.array(early_range_list)
+        peak_range_list = np.array(peak_range_list)
+        late_range_list = np.array(late_range_list)
+        df['early'] = early_range_list
+        df['peak'] = peak_range_list
+        df['late'] = late_range_list
+
+        return df
+
+
+    def seasonal_split(self):
+        seasonal_df = self.__get_pheno_df()
+        fdir = join(self.datadir,'per_pix_clean')
+        outdir = join(self.datadir,'per_pix_seasonal')
+        T.mk_dir(outdir)
+        dic = T.load_npy_dir(fdir)
+        # T.print_head_n(seasonal_df)
+        season_dic = T.df_to_dic(seasonal_df,'pix')
+        for season in global_season_dic:
+            annual_dic = {}
+            for pix in tqdm(dic,desc=season):
+                if not pix in season_dic:
+                    continue
+                gs_range = season_dic[pix][season]
+                vals = dic[pix]
+                vals = np.array(vals)
+                T.mask_999999_arr(vals)
+                vals[vals == 0] = np.nan
+                if np.isnan(np.nanmean(vals)):
+                    continue
+                annual_vals = T.monthly_vals_to_annual_val(vals,gs_range)
+                annual_dic[pix] = annual_vals
+            outf = join(outdir,season)
+            T.save_npy(annual_dic,outf)
+
+
 class GLC2000:
 
     def __init__(self):
@@ -756,10 +1003,11 @@ def seasonal_split_ly_NDVI():
 def main():
     # LAI().run()
     # seasonal_split_ly_NDVI()
-    # GEE_AVHRR_LAI().run()
+    # GEE_AVHRR_LAI()).run()
+    GEE_MODIS_LAI().run()
     # GLC2000().run()
     # CCI_SM().run()
-    LAI_3g().run()
+    # LAI_3g().run()
     # check_cci_sm()
     # f = '/Volumes/NVME2T/greening_project_redo/data/GEE_AVHRR_LAI/per_pix_clean/per_pix_dic_005.npy'
     # dic = T.load_npy(f)

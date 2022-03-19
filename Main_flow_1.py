@@ -1055,7 +1055,7 @@ class RF:
 
     def run(self):
         self.build_df()
-        self.cal_importance()
+        # self.cal_importance()
         pass
 
     def __var_list_train(self):
@@ -1177,36 +1177,41 @@ class RF:
     def build_df(self):
         df = self.__gen_df_init()
 
-        season_list = Global_vars().season_list()
-        var_list = self.x_var_list
-        col_list = []
-        for var_ in var_list:
-            for season in season_list:
-                print(var_,season)
-                col_name = f'{season}_{var_}'
-                col_list.append(col_name)
-                df = self.add_each_season_to_df(df,var_,season)
+        # season_list = Global_vars().season_list()
+        # var_list = self.x_var_list
+        # col_list = []
+        # for var_ in var_list:
+        #     for season in season_list:
+        #         print(var_,season)
+        #         col_name = f'{season}_{var_}'
+        #         col_list.append(col_name)
+        #         df = self.add_each_season_to_df(df,var_,season)
         # df = df.dropna(how='all',subset=col_list)
 
         # combine_season_list = ['early','peak']
         # var_ = 'LAI_3g'
         # method = 'mean'
         # df = self.add_combine(df,combine_season_list,var_,method)
-        #
+
+        combine_season_list = ['early', 'peak']
+        var_ = 'Soil moisture'
+        method = 'mean'
+        df = self.add_combine(df, combine_season_list, var_, method)
+
         # combine_season_list = ['early','peak','late']
         # var_ = 'LAI_3g'
         # method = 'mean'
         # df = self.add_combine(df,combine_season_list,var_,method)
-
+        #
         # combine_season_list = ['early','peak','late']
         # var_ = 'Soil moisture'
         # method = 'mean'
         # df = self.add_combine(df,combine_season_list,var_,method)
-
-        combine_season_list = ['early', 'peak', 'late']
-        var_ = 'SPEI_accu'
-        method = 'sum'
-        df = self.add_combine(df, combine_season_list, var_, method)
+        #
+        # combine_season_list = ['early', 'peak', 'late']
+        # var_ = 'SPEI_accu'
+        # method = 'sum'
+        # df = self.add_combine(df, combine_season_list, var_, method)
         #
         # #
         # combine_season_list = ['early', 'peak']
@@ -1268,7 +1273,6 @@ class RF:
 
         return df
 
-
     def add_each_season_to_df(self,df,var_,season):
         # var_ = 'LAI_3g'
         # season = 'late'
@@ -1295,7 +1299,8 @@ class RF:
                     year_list.append(np.nan)
                     pix_list.append(np.nan)
                 continue
-            vals = P.cal_anomaly_juping(vals)
+            # vals = P.cal_anomaly_juping(vals)
+            vals = P.cal_relative_change(vals)
             dic_i = dict(zip(year_list_,vals))
             for y in year_list_:
                 if not y in dic_i:
@@ -1416,14 +1421,15 @@ class Analysis:
         # self.Greeing_trend_two_period()
         # self.Jan_to_Dec_timeseries()
         # self.Jan_to_Dec_timeseries_sos_condition()
-        # self.LAI_pdf_SOS_condition()
+        # self.yvar_pdf_SOS_condition()
+        # self.LAI_pdf_SOS_condition_climate_background()
         # self.LAI_spatial_SOS_condition()
         # self.Jan_to_Dec_timeseries_hants()
         # self.early_peak_greening_speedup_advanced_sos()
         # self.check()
-        # self.carry_over_effect_with_sm()
+        self.carry_over_effect_with_sm_matrix()
         # self.inter_annual_carryover_effect()
-        self.correlation_advanced_sos()
+        # self.correlation_advanced_sos()
         # self.correlation_sos_vs_vegetation()
         # self.correlation_pdf_sos_vs_vegetation()
         # self.correlation_positive_sos_trend()
@@ -2099,15 +2105,21 @@ class Analysis:
                     plt.close()
                     # plt.show()
 
-    def LAI_pdf_SOS_condition(self):
-        outdir = join(self.this_class_png,'LAI_pdf_SOS_condition')
-        T.mk_dir(outdir)
-        y_var = 'LAI_3g'
+    def yvar_pdf_SOS_condition(self):
+        # y_var = 'Soil moisture'
+        # bin_range = (-0.02,0.02)
+        # y_var = 'LAI_3g'
+        # bin_range = (-0.4,0.4)
+        y_var = 'SPEI'
+        bin_range = (-1, 1)
+
+        outdir = join(self.this_class_png,f'yvar_pdf_SOS_condition/{y_var}')
+        T.mk_dir(outdir,force=True)
         region_var = 'HI_reclass'
         condition_list = ['Advanced SOS','Delayed SOS']
         # lai_dir = vars_info_dic[y_var]['path']
         start_year = vars_info_dic[y_var]['start_year']
-        lai_dff = join(Pick_Early_Peak_Late_value().this_class_arr,'Pick_variables/LAI_3g.df')
+        lai_dff = join(Pick_Early_Peak_Late_value().this_class_arr,f'Pick_variables/{y_var}.df')
         lai_df = T.load_df(lai_dff)
         lai_df = T.combine_df_columns(lai_df,['early','peak','late'],'all_gs')
         # season = 'all_gs'
@@ -2177,20 +2189,136 @@ class Analysis:
                     arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic_result)
                     arr_flatten = arr.flatten()
                     arr_flatten = T.remove_np_nan(arr_flatten)
-                    x,y = Plot().plot_hist_smooth(arr_flatten,bins=80,range=(-0.4,0.4),alpha=0)
                     plt.figure(figsize=(6,3))
+                    x,y = Plot().plot_hist_smooth(arr_flatten,bins=80,range=bin_range,alpha=0)
+                    # x,y = Plot().plot_hist_smooth(arr_flatten,bins=80,alpha=0)
                     plt.plot(x,y,label=title,color=color_list[flag])
                     flag += 1
                     # up,down = T.get_vals_std_up_down(arr)
                     # plt.imshow(arr,vmax=up,vmin=down)
                     # plt.colorbar()
                     # plt.title(title)
-                    plt.vlines(x=0,ymin=0,ymax=.2,linestyles='dashed')
-                    plt.ylim(0,0.2)
+                    plt.vlines(x=0,ymin=0,ymax=.1,linestyles='dashed')
+                    plt.ylim(0,0.1)
                     print(title)
                     plt.legend()
                     plt.savefig(join(outdir,title+'.pdf'))
                     plt.close()
+                    # plt.show()
+
+
+    def __get_MA_dic(self,climate_var):
+        outdir = join(temporary_root,'MA_dic')
+        T.mk_dir(outdir)
+        outf = join(outdir,climate_var+'.npy')
+        climate_dir = vars_info_dic[climate_var]['path']
+        climate_dic = T.load_npy_dir(climate_dir)
+        if isfile(outf):
+            return T.load_npy(outf),climate_dic
+        MA_climate_arr = DIC_and_TIF().pix_dic_to_spatial_arr_mean(climate_dic)
+        MA_climate_dic = DIC_and_TIF().spatial_arr_to_dic(MA_climate_arr)
+        T.save_npy(MA_climate_dic,outf)
+        return MA_climate_dic,climate_dic
+
+
+    def LAI_pdf_SOS_condition_climate_background(self):
+        outdir = join(self.this_class_png,'LAI_pdf_SOS_condition_climate_background')
+        climate_var = 'Precipitation'
+        MA_climate_dic, climate_dic = self.__get_MA_dic(climate_var)
+        T.mk_dir(outdir)
+        y_var = 'LAI_3g'
+        region_var = 'HI_reclass'
+        # condition_list = ['Advanced SOS','Delayed SOS']
+        condition_list = ['Advanced SOS']
+        # lai_dir = vars_info_dic[y_var]['path']
+        start_year = vars_info_dic[y_var]['start_year']
+        lai_dff = join(Pick_Early_Peak_Late_value().this_class_arr,'Pick_variables/LAI_3g.df')
+        lai_df = T.load_df(lai_dff)
+        lai_df = T.combine_df_columns(lai_df,['early','peak','late'],'all_gs')
+        # season = 'all_gs'
+        # season = 'peak'
+        # season = 'late'
+        seasonlist = global_season_dic
+        seasonlist.append('all_gs')
+        seasonlist = ['late']
+        color_list = KDE_plot().makeColours(list(range(8)),cmap='jet')
+        for season in seasonlist:
+            print(season)
+            flag = 0
+            lai_dic = T.df_to_spatial_dic(lai_df,season)
+            phenology_dic = self.get_phenology_spatial_dic('early_start',isanomaly=True)
+            all_spatial_dic = {
+                'lai':lai_dic,
+                'sos':phenology_dic
+            }
+            # region = 'Humid'
+            # region = 'Non Humid'
+            df = T.spatial_dics_to_df(all_spatial_dic)
+            df = Dataframe().add_Humid_nonhumid(df)
+            # region_list = T.get_df_unique_val_list(df,region_var)
+            # region_list = ['Humid']
+            region_list = ['Non Humid']
+            # df = df[df['HI_reclass']==region]
+            df = df.dropna()
+            for region in region_list:
+                df_region = df[df[region_var]==region]
+                # plt.figure()
+                for condition in condition_list:
+                    title = f'{season}_{region}_{condition}'
+                    lai_dic = T.df_to_spatial_dic(df_region,'lai')
+                    early_start_dic_anomaly = T.df_to_spatial_dic(df_region,'sos')
+                    year_list = list(range(start_year, 9999))
+                    spatial_dic_result = {}
+
+                    for pix in tqdm(lai_dic):
+                        if not pix in early_start_dic_anomaly:
+                            continue
+                        vals = lai_dic[pix]
+                        vals = T.detrend_vals(vals)
+                        # vals = Pre_Process().z_score_climatology(vals)
+                        vals = Pre_Process().cal_anomaly_juping(vals)
+                        # vals_reshape = np.reshape(vals, (-1, 12))
+                        dic_i = dict(zip(year_list, vals))
+                        early_start_dic_anomaly_i = early_start_dic_anomaly[pix]
+                        # print(early_start_dic_anomaly_i)
+                        if type(early_start_dic_anomaly_i) == float:
+                            continue
+                        picked_vals = []
+                        for year in dic_i:
+                            if not year in early_start_dic_anomaly_i:
+                                continue
+                            sos_anomaly = early_start_dic_anomaly_i[year]
+                            if condition == 'Advanced SOS':
+                                if sos_anomaly < 0:
+                                    picked_vals.append(dic_i[year])
+                            elif condition == 'Delayed SOS':
+                                if sos_anomaly > 0:
+                                    picked_vals.append(dic_i[year])
+                            else:
+                                raise
+                        if T.is_all_nan(picked_vals):
+                            continue
+                        longterm_mean = np.nanmean(picked_vals)
+                        if longterm_mean > 0:
+                        # if longterm_mean < 0:
+                            spatial_dic_result[pix] = longterm_mean
+                    for pix in tqdm(spatial_dic_result):
+                        climate_ts = climate_dic[pix]
+                        climate_ts_seasonal = T.monthly_vals_to_annual_val(climate_ts,method='array')
+                        climate_ts_seasonal_mean = np.nanmean(climate_ts_seasonal,axis=0)
+                        plt.plot(climate_ts_seasonal_mean,color='gray',alpha=0.002)
+                    plt.ylim(0,150)
+                    plt.title(title)
+                    plt.ylabel(climate_var)
+                    plt.xlabel('Month')
+                    plt.xticks(T.mon)
+                    plt.show()
+                    # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic_result)
+                    # plt.imshow(arr)
+                    # plt.colorbar()
+                    # print(title)
+                    # # plt.savefig(join(outdir,title+'.pdf'))
+                    # # plt.close()
                     # plt.show()
 
 
@@ -2378,36 +2506,41 @@ class Analysis:
 
 
 
-    def carry_over_effect_with_sm(self):
+    def carry_over_effect_with_sm_matrix(self):
         # matrix
         # bin_n = 21
         bin_n = 11
         dff = join(RF().this_class_arr,'Dataframe.df')
         df = T.load_df(dff)
 
-        early_peak_LAI_3g_mean_var = 'early_peak_LAI_3g_mean'
-        # early_peak_LAI_3g_mean_var = 'early_LAI_3g'
+        # early_peak_LAI_3g_mean_var = 'early_peak_LAI_3g_mean'
+        early_peak_LAI_3g_mean_var = 'early_LAI_3g'
         # early_peak_LAI_3g_mean_var = 'peak_LAI_3g'
-        early_peak_late_sm_var = 'early_peak_late_Soil moisture_mean'
+        # early_peak_late_sm_var = 'early_peak_late_Soil moisture_mean'
+        early_peak_late_sm_var = 'early_peak_Soil moisture_mean'
         # early_peak_late_sm_var = 'early_peak_Soil moisture_accu_sum'
         # early_peak_late_sm_var = 'early_peak_SPEI_accu_sum'
-        early_peak_late_sm_var = 'early_peak_late_SPEI_accu_sum'
+        # early_peak_late_sm_var = 'early_peak_late_SPEI_accu_sum'
         late_lai_var = 'late_LAI_3g'
+        # late_lai_var = 'peak_LAI_3g'
         sos_var = 'SOS'
-        df = df[df[early_peak_LAI_3g_mean_var]>0]
+        # df = df[df[early_peak_LAI_3g_mean_var]>0]
         df = df[df[sos_var]<0]
-        # humid_var = 'Humid'
+        humid_var = 'Humid'
         # humid_var = 'Non Humid'
-        # df = df[df['HI_reclass'] == humid_var]
+        df = df[df['HI_reclass'] == humid_var]
         print(df.columns)
         #
-        # print(len(df))
+        # T.print_head_n(df)
+        # print(df)
         # exit()
         sm_vals = df[early_peak_late_sm_var].tolist() # min: -.15 max: .15
         early_peak_LAI_vals = df[early_peak_LAI_3g_mean_var].tolist() # min: 0 max: 2
         # plt.hist(early_peak_LAI_vals,bins=80)
         # plt.show()
         sm_vals = T.remove_np_nan(sm_vals)
+        # print(sm_vals)
+        # exit()
         early_peak_LAI_vals = T.remove_np_nan(early_peak_LAI_vals)
         sm_bins = []
         for n in range(bin_n):
@@ -2435,7 +2568,7 @@ class Analysis:
                 # print(len(df_lai))
                 # exit()
                 late_lai_vals = df_lai[late_lai_var].tolist()
-                early_lai_vals = df_lai[early_peak_LAI_3g_mean_var].tolist()
+                # early_lai_vals = df_lai[early_peak_LAI_3g_mean_var].tolist()
                 # r,p = T.nan_correlation(late_lai_vals,early_lai_vals)
                 late_lai_mean = np.nanmean(late_lai_vals)
                 temp.append(late_lai_mean)
@@ -2449,13 +2582,14 @@ class Analysis:
         sm_bins_ticks = [f'{i:0.2f}' for i in sm_bins]
         plt.xticks(range(bin_n),early_peak_LAI_bins_ticks,rotation=90)
         plt.yticks(range(bin_n),sm_bins_ticks)
-        # plt.imshow(matrix,vmin=-0.05,vmax=0.05,cmap='RdBu')
-        plt.imshow(matrix,vmin=down,vmax=up,cmap='RdBu')
+        plt.imshow(matrix,vmin=-0.1,vmax=0.1,cmap='RdBu')
+        # plt.imshow(matrix,vmin=down,vmax=up,cmap='RdBu')
+        # plt.imshow(matrix,cmap='RdBu')
         cbar = plt.colorbar()
         cbar.ax.set_ylabel(late_lai_var, rotation=270)
         plt.xlabel(early_peak_LAI_3g_mean_var)
         plt.ylabel(early_peak_late_sm_var)
-        # plt.title(humid_var)
+        plt.title(humid_var)
         plt.tight_layout()
         plt.show()
         pass
