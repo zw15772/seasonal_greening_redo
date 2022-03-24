@@ -1,4 +1,6 @@
 # coding=utf-8
+import cytoolz.curried
+
 import Main_flow
 from preprocess import *
 results_root_main_flow = join(results_root,'Main_flow_1')
@@ -1413,6 +1415,8 @@ class Analysis:
     def run(self):
         # self.Greeing_trend()
         # self.Greeing_trend_combine()
+        # self.Greeing_trend_lc_ratio()
+        self.Greeing_trend_lc_tif()
         # self.Greeing_trend_sos_conditon()
         # self.plot_pdf_Greeing_trend_sos_conditon()
         # self.SOS_trend()
@@ -1427,7 +1431,7 @@ class Analysis:
         # self.Jan_to_Dec_timeseries_hants()
         # self.early_peak_greening_speedup_advanced_sos()
         # self.check()
-        self.carry_over_effect_with_sm_matrix()
+        # self.carry_over_effect_with_sm_matrix()
         # self.inter_annual_carryover_effect()
         # self.correlation_advanced_sos()
         # self.correlation_sos_vs_vegetation()
@@ -1610,6 +1614,119 @@ class Analysis:
         spatial_vals_dic = T.df_to_spatial_dic(df,new_combined_colname)
         trend_arr = DIC_and_TIF().pix_dic_to_spatial_arr_trend(spatial_vals_dic)
         DIC_and_TIF().arr_to_tif(trend_arr,out_tif)
+        pass
+    def Greeing_trend_lc_ratio(self):
+        var_ = 'LAI_3g'
+        # var_ = 'SPEI'
+        # var_ = 'Soil moisture'
+        outdir = join(self.this_class_tif,f'Greeing_trend_lc_ratio/{var_}')
+        T.mk_dir(outdir,force=True)
+        dff = join(Pick_Early_Peak_Late_value().this_class_arr,f'Pick_variables/{var_}.df')
+        df = T.load_df(dff)
+        # lc_list = T.get_df_unique_val_list(df,'GLC2000')
+        for season in global_season_dic:
+            print(season)
+            plt.figure()
+            col_name = join(f'{season}')
+            spatial_dic = T.df_to_spatial_dic(df,col_name)
+            result_dic = {}
+            for pix in spatial_dic:
+                vals = spatial_dic[pix]
+                if type(vals) == float:
+                    continue
+                # print(len(vals))
+                # exit()
+                x = list(range(len(vals)))
+                y = vals
+                a, b, r, p = self.nan_linear_fit(x,y)
+                result = {'k':a,'p':p}
+                result_dic[pix] = result
+            df_temp = T.dic_to_df(result_dic,key_col_str='pix')
+            df_temp = Dataframe().add_lc(df_temp)
+            df_temp = Dataframe().add_Humid_nonhumid(df_temp)
+            df_temp = df_temp.dropna()
+
+            lc_list = T.get_df_unique_val_list(df_temp,'GLC2000')
+            category_list = []
+            for i,row in df_temp.iterrows():
+                k = row['k']
+                p = row['p']
+                if p >= 0.1:
+                    category = 'non-significant'
+                elif 0.05 < p < 0.1:
+                    if k > 0:
+                        category = 'positive'
+                    else:
+                        category = 'negative'
+                elif p <= 0.05:
+                    if k > 0:
+                        category = 'significant positive'
+                    else:
+                        category = 'significant negative'
+                else:
+                    category = 'non-significant'
+                category_list.append(category)
+            df_temp['category'] = category_list
+            category_list_unique = ['significant positive','positive','non-significant','negative','significant negative']
+            category_color_dic = {'non-significant':'grey','positive':'green','negative':'orange','significant positive':'blue','significant negative':'red'}
+            for lc in lc_list:
+                df_temp_lc = df_temp[df_temp['GLC2000'] == lc]
+                ratio_dic = {}
+                for category in category_list_unique:
+                    df_category = df_temp_lc[df_temp_lc['category'] == category]
+                    ratio = len(df_category)/len(df_temp_lc)
+                    ratio_dic[category] = ratio
+                print(lc)
+                print(ratio_dic)
+                bottom = 0
+                for category in category_list_unique:
+                    plt.bar(lc,ratio_dic[category],bottom=bottom,color=category_color_dic[category])
+                    bottom += ratio_dic[category]
+            plt.title(f'{season}')
+            # plt.legend()
+        plt.show()
+
+
+        pass
+
+    def Greeing_trend_lc_tif(self):
+        var_ = 'LAI_3g'
+        # var_ = 'SPEI'
+        # var_ = 'Soil moisture'
+        outdir = join(self.this_class_tif, f'Greeing_trend_lc_tif/{var_}')
+        T.open_path_and_file(outdir)
+        T.mk_dir(outdir, force=True)
+        dff = join(Pick_Early_Peak_Late_value().this_class_arr, f'Pick_variables/{var_}.df')
+        df = T.load_df(dff)
+        df = df.dropna()
+        # lc_list = T.get_df_unique_val_list(df,'GLC2000')
+        for season in global_season_dic:
+            print(season)
+            plt.figure()
+            col_name = join(f'{season}')
+            spatial_dic = T.df_to_spatial_dic(df, col_name)
+            result_dic = {}
+            for pix in spatial_dic:
+                vals = spatial_dic[pix]
+                if type(vals) == float:
+                    continue
+                # print(len(vals))
+                # exit()
+                x = list(range(len(vals)))
+                y = vals
+                a, b, r, p = self.nan_linear_fit(x, y)
+                result = {'k': a, 'p': p}
+                result_dic[pix] = result
+            df_temp = T.dic_to_df(result_dic, key_col_str='pix')
+            # df_temp = Dataframe().add_lc(df_temp)
+            # df_temp = Dataframe().add_Humid_nonhumid(df_temp)
+            df_temp = df_temp.dropna()
+            spatial_dic_k = T.df_to_spatial_dic(df_temp, 'k')
+            spatial_dic_p = T.df_to_spatial_dic(df_temp, 'p')
+            DIC_and_TIF().pix_dic_to_tif(spatial_dic_k, join(outdir, f'{season}_k.tif'))
+            DIC_and_TIF().pix_dic_to_tif(spatial_dic_p, join(outdir, f'{season}_p.tif'))
+
+
         pass
 
     def Greeing_trend_sos_conditon(self):
@@ -2926,7 +3043,7 @@ class Dataframe:
         # df = self.add_data(df)
         # df = self.add_lon_lat_to_df(df)
         # df = self.add_Humid_nonhumid(df)
-        df = self.combine_season(df)
+        # df = self.combine_season(df)
         T.save_df(df, self.dff)
         T.df_to_excel(df, self.dff, random=False)
 
