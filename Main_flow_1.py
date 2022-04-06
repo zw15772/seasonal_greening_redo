@@ -315,7 +315,7 @@ class Phenology:
         # outdir = join(self.datadir,'per_pix_annual')
         # self.data_transform_annual(fdir,outdir)
         # 3 hants smooth
-        # self.hants()
+        self.hants()
         # self.check_hants()
 
         # self.annual_phenology()
