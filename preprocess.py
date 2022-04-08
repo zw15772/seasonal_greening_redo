@@ -1021,7 +1021,7 @@ class Resample:
         fdir = join(self.datadir,'tif')
         outdir = join(self.datadir,'resample_ly')
         T.mk_dir(outdir)
-        T.open_path_and_file(fdir)
+        T.open_path_and_file(outdir)
         target_res = 0.5
         for f in tqdm(T.listdir(fdir)):
             fpath = join(fdir,f)
@@ -1042,8 +1042,16 @@ class Resample:
                     row_T = row.T
                     col_T = row_T[j*window_len:(j+1)*window_len]
                     matrix_i = col_T.T
-                    mean_matrix_i = np.nansum(matrix_i) / len(matrix_i.flatten())
-                    # temp.append(np.nanmean(mean_matrix_i))
+                    ## count the number of nan
+                    matrix_i_flat = matrix_i.flatten()
+                    nan_flag = np.isnan(matrix_i_flat)
+                    nan_number = T.count_num(nan_flag,True)
+                    nan_ratio = nan_number/len(matrix_i_flat)
+                    if nan_ratio > 0.5:
+                        mean_matrix_i = np.nan
+                    else:
+                        mean_matrix_i = np.nansum(matrix_i) / len(matrix_i_flat)
+                        # temp.append(np.nanmean(mean_matrix_i))
                     temp.append(mean_matrix_i)
                 # print(temp)
                 temp = np.array(temp)
