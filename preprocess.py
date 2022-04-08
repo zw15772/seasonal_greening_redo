@@ -1000,11 +1000,64 @@ def seasonal_split_ly_NDVI():
 
 
 
+class Resample:
+
+    def __init__(self):
+        self.datadir = join(data_root,'BU_MCD_LAI_CMG')
+        pass
+
+
+    def run(self):
+        self.resample()
+        pass
+
+    def resample_i(self):
+
+
+        pass
+
+
+    def resample(self):
+        fdir = join(self.datadir,'tif')
+        outdir = join(self.datadir,'resample_ly')
+        T.mk_dir(outdir)
+        T.open_path_and_file(fdir)
+        target_res = 0.5
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir,f)
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
+            # print(pixelWidth,pixelHeight)
+            array = array.astype(np.float32)
+            array[array == -999999] = np.nan
+            window_len = int(target_res/pixelWidth)
+            array_row_new = len(array) / window_len
+            array_col_new = len(array[0]) / window_len
+            array_row_new = int(array_row_new)
+            array_col_new = int(array_col_new)
+            matrix = []
+            for i in range(array_row_new):
+                row = array[i*window_len:(i+1)*window_len]
+                temp = []
+                for j in range(array_col_new):
+                    row_T = row.T
+                    col_T = row_T[j*window_len:(j+1)*window_len]
+                    matrix_i = col_T.T
+                    mean_matrix_i = np.nansum(matrix_i) / len(matrix_i.flatten())
+                    # temp.append(np.nanmean(mean_matrix_i))
+                    temp.append(mean_matrix_i)
+                # print(temp)
+                temp = np.array(temp)
+                matrix.append(temp)
+            matrix = np.array(matrix)
+            matrix[matrix==0] = np.nan
+            DIC_and_TIF().arr_to_tif(matrix,join(outdir,f))
+
+
 def main():
     # LAI().run()
     # seasonal_split_ly_NDVI()
     # GEE_AVHRR_LAI()).run()
-    GEE_MODIS_LAI().run()
+    # GEE_MODIS_LAI().run()
     # GLC2000().run()
     # CCI_SM().run()
     # LAI_3g().run()
@@ -1016,7 +1069,7 @@ def main():
     #     print(len(vals))
     #     plt.plot(vals)
     #     plt.show()
-
+    Resample().run()
 
     pass
 
