@@ -956,27 +956,114 @@ class CCI_SM:
         # plt.show()
 
 
-class LAI_3g:
+class LAI_4g:
 
     def __init__(self):
-        self.datadir = join(data_root,'/Volumes/NVME2T/greening_project_redo/data/LAI_3g')
+        self.datadir = join(data_root,'LAI4g')
         pass
 
     def run(self):
-        self.check_data()
+        self.resample()
         pass
 
-    def check_data(self):
-        fdir = join(self.datadir,'per_pix')
-        dic = T.load_npy_dir(fdir)
-        for pix in dic:
-            vals = dic[pix]
-            if np.isnan(np.nanmean(vals)):
-                continue
-            # print(vals)
-            print(len(vals)/12)
-            exit()
+    def resample(self):
+        fdir = join(self.datadir,'gimms_lai4g_tiff')
+        outdir = join(self.datadir,'tif_resample')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir,f)
+            outf = join(outdir,f)
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
+            array_resample = T.resample_nan(array,0.5,pixelWidth)
+            array_resample[array_resample == 0] = np.nan
+            array_resample = array_resample[::-1]
+            DIC_and_TIF().arr_to_tif(array_resample,outf)
+
+
+class LAI_3g:
+
+    def __init__(self):
+        self.datadir = join(data_root,'LAI3g')
         pass
+
+    def run(self):
+        self.tbl_to_tif()
+        pass
+
+    def __mat_to_tif(self,mat_f,outf):
+        print(mat_f)
+        mat_f_r = scipy.io.matlab.mio.loadmat(mat_f)
+        print(mat_f_r)
+        exit()
+        # print(mat_f_r.keys())
+        matrix = mat_f_r['outmat']
+        # lai_arr = matrix[0][0][0]
+        # lai_arr = matrix[0][0][1]
+        # lai_arr = matrix[0][0][2]
+        # lai_arr = matrix[0][0][3]
+        lai_arr = matrix[0][0][4]
+        lai_arr = np.array(lai_arr)
+        lai_arr[lai_arr > 200] = np.nan
+        lai_arr = lai_arr / 10.
+        DIC_and_TIF(pixelsize=0.05).arr_to_tif(lai_arr,outf)
+
+    def tbl_to_tif(self):
+
+        fdir = join(self.datadir,'avhrrbulai_v02')
+        outdir = join(self.datadir,'tif')
+        T.mk_dir(outdir)
+        # T.open_path_and_file(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            outf = join(outdir,f.replace('.mat','.tif'))
+            self.__mat_to_tif(join(fdir,f),outf)
+
+        pass
+
+    def tbl_to_tif1(self):
+
+        fdir = join(self.datadir,'avhrrbulai_v02')
+        for f in T.listdir(fdir):
+            print(f)
+
+    def resample(self):
+        fdir = join(self.datadir,'gimms_lai4g_tiff')
+        outdir = join(self.datadir,'tif_resample')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir,f)
+            outf = join(outdir,f)
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
+            array_resample = T.resample_nan(array,0.5,pixelWidth)
+            array_resample[array_resample == 0] = np.nan
+            array_resample = array_resample[::-1]
+            DIC_and_TIF().arr_to_tif(array_resample,outf)
+
+
+class VODCA:
+
+    def __init__(self):
+        self.datadir = join(data_root,'VODCA')
+        pass
+
+    def run(self):
+        self.resample()
+        pass
+
+
+    def resample(self):
+        fdir = join(self.datadir,'tif025')
+        outdir = join(self.datadir,'tif_resample')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir,f)
+            outf = join(outdir,f)
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
+            array_resample = T.resample_nan(array,0.5,pixelWidth)
+            array_resample[array_resample == 0] = np.nan
+            # array_resample = array_resample[::-1]
+            DIC_and_TIF().arr_to_tif(array_resample,outf)
+
+
 
 def seasonal_split_ly_NDVI():
     fdir = join(data_root, 'NDVI_ly/per_pix')
@@ -1011,8 +1098,38 @@ class Resample:
         self.resample()
         pass
 
-    def resample_i(self):
-
+    def resample_i(self,array,target_res,original_res):
+        array = array.astype(np.float32)
+        array[array == -999999] = np.nan
+        window_len = int(target_res / original_res)
+        array_row_new = len(array) / window_len
+        array_col_new = len(array[0]) / window_len
+        array_row_new = int(array_row_new)
+        array_col_new = int(array_col_new)
+        matrix = []
+        for i in range(array_row_new):
+            row = array[i * window_len:(i + 1) * window_len]
+            temp = []
+            for j in range(array_col_new):
+                row_T = row.T
+                col_T = row_T[j * window_len:(j + 1) * window_len]
+                matrix_i = col_T.T
+                ## count the number of nan
+                matrix_i_flat = matrix_i.flatten()
+                nan_flag = np.isnan(matrix_i_flat)
+                nan_number = T.count_num(nan_flag, True)
+                nan_ratio = nan_number / len(matrix_i_flat)
+                if nan_ratio > 0.5:
+                    mean_matrix_i = np.nan
+                else:
+                    mean_matrix_i = np.nansum(matrix_i) / len(matrix_i_flat)
+                    # temp.append(np.nanmean(mean_matrix_i))
+                temp.append(mean_matrix_i)
+            # print(temp)
+            temp = np.array(temp)
+            matrix.append(temp)
+        matrix = np.array(matrix)
+        matrix[matrix == 0] = np.nan
 
         pass
 
@@ -1068,7 +1185,9 @@ def main():
     # GEE_MODIS_LAI().run()
     # GLC2000().run()
     # CCI_SM().run()
+    # LAI_4g().run()
     # LAI_3g().run()
+    VODCA().run()
     # check_cci_sm()
     # f = '/Volumes/NVME2T/greening_project_redo/data/GEE_AVHRR_LAI/per_pix_clean/per_pix_dic_005.npy'
     # dic = T.load_npy(f)
@@ -1077,7 +1196,7 @@ def main():
     #     print(len(vals))
     #     plt.plot(vals)
     #     plt.show()
-    Resample().run()
+    # Resample().run()
 
     pass
 

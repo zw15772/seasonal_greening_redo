@@ -4800,6 +4800,62 @@ class Drought_event:
         plt.show()
 
 
+class Time_series:
+
+    def __init__(self):
+
+        pass
+
+    def run(self):
+        self.dataframe()
+        pass
+
+    def dataframe(self):
+        dff = '/Volumes/NVME2T/greening_project_redo/data/vege_dataframe/Data_frame_1982-2020.df'
+        df = T.load_df(dff)
+        df = df[df['row']>120]
+        columns_list = df.columns
+        for col in columns_list:
+            if col == 'pix':
+                continue
+            # print(col)
+        vege_product_list = ['LAI3g','LAI4g','MODIS_LAI','VOD']
+        season_list = ['early','peak','late']
+        # mode_list = ['relative_change','raw']
+        mode_list = ['relative_change']
+
+        for humid in ['Humid','Non-Humid']:
+            if humid == 'Humid':
+                df_HI = df[df['HI_class']=='Humid']
+            else:
+                df_HI = df[df['HI_class']!='Humid']
+            for season in season_list:
+                plt.figure()
+                plt.title(f'{season}-{humid}')
+                for vege_product in vege_product_list:
+                    for mode in mode_list:
+                        col_name_i = f'{vege_product}_{season}_{mode}'
+                        for col_name in columns_list:
+                            if col_name_i in col_name:
+                                print(col_name_i)
+                                df_vals = df_HI[col_name]
+                                df_years = df_HI['year']
+                                df_pix = df_HI['pix']
+                                df_i = pd.DataFrame({'pix':df_pix,'year':df_years,'vals':df_vals})
+                                years_list = T.get_df_unique_val_list(df_i,'year')
+                                vals_list = []
+                                for year in tqdm(years_list):
+                                    df_year_i = df_i[df_i['year'] == year]
+                                    if len(df_year_i) == 0:
+                                        vals_list.append(np.nan)
+                                    else:
+                                        vals_year = df_year_i['vals']
+                                        pix = df_year_i['pix']
+                                        vals_year_mean = np.nanmean(vals_year)
+                                        vals_list.append(vals_year_mean)
+                                plt.plot(years_list,vals_list,label=f'{col_name}')
+                plt.legend()
+        plt.show()
 
 def main():
     # Phenology().run()
@@ -4808,11 +4864,12 @@ def main():
     # Dataframe().run()
     # RF().run()
     # Moving_window_RF().run()
-    Analysis().run()
+    # Analysis().run()
     # Moving_window().run()
     # Global_vars().get_valid_pix_df()
     # Drought_event().run()
     # Partial_corr().run()
+    Time_series().run()
 
     pass
 
