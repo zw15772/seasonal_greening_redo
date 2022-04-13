@@ -928,7 +928,7 @@ class Pick_Early_Peak_Late_value:
 
 
     def run(self):
-        # self.Pick_variables()
+        self.Pick_variables()
         # self.Pick_variables_accumulative()
         # self.Pick_variables_min()
         pass
@@ -938,12 +938,13 @@ class Pick_Early_Peak_Late_value:
         outdir = join(self.this_class_arr,'Pick_variables')
         T.mk_dir(outdir)
         var_list = [
-            'LAI_3g',
-            'SPEI',
-            'Temperature',
-            'Soil moisture',
-            'CO2',
-            'Aridity',
+            # 'LAI_3g',
+            # 'SPEI',
+            # 'Temperature',
+            # 'Soil moisture',
+            # 'CO2',
+            # 'Aridity',
+            'VOD',
         ]
         EPL_dff = join(Get_Monthly_Early_Peak_Late().this_class_arr,'Monthly_Early_Peak_Late.df')
         EPL_df = T.load_df(EPL_dff)
@@ -958,6 +959,8 @@ class Pick_Early_Peak_Late_value:
                 if not pix in EPL_dic:
                     continue
                 vals = dic[pix]
+                vals = np.array(vals)
+                vals[vals<-999] = np.nan
                 EPL_dic_i = EPL_dic[pix]
                 season_vals_dic = {}
                 for season in EPL_dic_i:
@@ -1414,9 +1417,10 @@ class Analysis:
 
     def run(self):
         # self.Greeing_trend()
+        self.Greeing_trend_relative_change()
         # self.Greeing_trend_combine()
         # self.Greeing_trend_lc_ratio()
-        self.Greeing_trend_lc_tif()
+        # self.Greeing_trend_lc_tif()
         # self.Greeing_trend_sos_conditon()
         # self.plot_pdf_Greeing_trend_sos_conditon()
         # self.SOS_trend()
@@ -1567,7 +1571,8 @@ class Analysis:
     def Greeing_trend(self):
         # var_ = 'LAI_3g'
         # var_ = 'SPEI'
-        var_ = 'Soil moisture'
+        # var_ = 'Soil moisture'
+        var_ = 'VOD'
         outdir = join(self.this_class_tif,f'Greeing_trend/{var_}')
         T.mk_dir(outdir,force=True)
         dff = join(Pick_Early_Peak_Late_value().this_class_arr,f'Pick_variables/{var_}.df')
@@ -1581,6 +1586,39 @@ class Analysis:
                 vals = spatial_dic[pix]
                 if type(vals) == float:
                     continue
+                x = list(range(len(vals)))
+                y = vals
+                a, b, r, p = self.nan_linear_fit(x,y)
+                trend_dic[pix] = a
+            out_tif = join(outdir,f'{season}.tif')
+            DIC_and_TIF().pix_dic_to_tif(trend_dic,out_tif)
+        #     arr = DIC_and_TIF().pix_dic_to_spatial_arr(trend_dic)
+        #     plt.figure()
+        #     plt.imshow(arr,vmax=0.02,vmin=-0.02,cmap='RdBu')
+        #     plt.colorbar()
+        #     DIC_and_TIF().plot_back_ground_arr(Global_vars().land_tif)
+        #     plt.title(season)
+        # plt.show()
+        pass
+    def Greeing_trend_relative_change(self):
+        # var_ = 'LAI_3g'
+        # var_ = 'SPEI'
+        # var_ = 'Soil moisture'
+        var_ = 'VOD'
+        outdir = join(self.this_class_tif,f'Greeing_trend_relative_change/{var_}')
+        T.mk_dir(outdir,force=True)
+        dff = join(Pick_Early_Peak_Late_value().this_class_arr,f'Pick_variables/{var_}.df')
+        df = T.load_df(dff)
+        for season in global_season_dic:
+            print(season)
+            col_name = join(f'{season}')
+            spatial_dic = T.df_to_spatial_dic(df,col_name)
+            trend_dic = {}
+            for pix in spatial_dic:
+                vals = spatial_dic[pix]
+                if type(vals) == float:
+                    continue
+                vals = Global_vars().cal_relative_change(vals)
                 x = list(range(len(vals)))
                 y = vals
                 a, b, r, p = self.nan_linear_fit(x,y)
@@ -4803,15 +4841,20 @@ class Drought_event:
 class Time_series:
 
     def __init__(self):
+        self.this_class_arr,self.this_class_tif,self.this_class_png = T.mk_class_dir('Time_series',results_root_main_flow)
 
         pass
 
     def run(self):
-        self.dataframe()
+        # self.dataframe_all_year()
+        self.dataframe_2000_2016()
         pass
 
-    def dataframe(self):
+    def dataframe_all_year(self):
         dff = '/Volumes/NVME2T/greening_project_redo/data/vege_dataframe/Data_frame_1982-2020.df'
+        outdir = join(self.this_class_png,'all_year')
+        T.mk_dir(outdir)
+        T.open_path_and_file(outdir)
         df = T.load_df(dff)
         df = df[df['row']>120]
         columns_list = df.columns
@@ -4823,6 +4866,7 @@ class Time_series:
         season_list = ['early','peak','late']
         # mode_list = ['relative_change','raw']
         mode_list = ['relative_change']
+        # mode_list = ['raw']
 
         for humid in ['Humid','Non-Humid']:
             if humid == 'Humid':
@@ -4837,6 +4881,64 @@ class Time_series:
                         col_name_i = f'{vege_product}_{season}_{mode}'
                         for col_name in columns_list:
                             if col_name_i in col_name:
+                                if '2000-2016' in col_name:
+                                    continue
+                                print(col_name_i)
+                                df_vals = df_HI[col_name]
+                                df_years = df_HI['year']
+                                df_pix = df_HI['pix']
+                                df_i = pd.DataFrame({'pix':df_pix,'year':df_years,'vals':df_vals})
+                                years_list = T.get_df_unique_val_list(df_i,'year')
+                                vals_list = []
+                                for year in tqdm(years_list):
+                                    df_year_i = df_i[df_i['year'] == year]
+                                    if len(df_year_i) == 0:
+                                        vals_list.append(np.nan)
+                                    else:
+                                        vals_year = df_year_i['vals']
+                                        pix = df_year_i['pix']
+                                        vals_year_mean = np.nanmean(vals_year)
+                                        vals_list.append(vals_year_mean)
+                                plt.plot(years_list,vals_list,label=f'{col_name}')
+                plt.grid(1)
+                plt.legend()
+                plt.savefig(join(outdir,f'{season}_{humid}.pdf'))
+                plt.close()
+        plt.show()
+    def dataframe_2000_2016(self):
+        outdir = join(self.this_class_png,'2000_2016')
+        T.mk_dir(outdir)
+        T.open_path_and_file(outdir)
+        dff = '/Volumes/NVME2T/greening_project_redo/data/vege_dataframe/Data_frame_1982-2020.df'
+        df = T.load_df(dff)
+        df = df[df['row']>120]
+        columns_list = df.columns
+        for col in columns_list:
+            if col == 'pix':
+                continue
+            print(col)
+        exit()
+        vege_product_list = ['LAI3g','LAI4g','MODIS_LAI','VOD']
+        season_list = ['early','peak','late']
+        # mode_list = ['relative_change','raw']
+        # mode_list = ['relative_change']
+        mode_list = ['raw']
+
+        for humid in ['Humid','Non-Humid']:
+            if humid == 'Humid':
+                df_HI = df[df['HI_class']=='Humid']
+            else:
+                df_HI = df[df['HI_class']!='Humid']
+            for season in season_list:
+                plt.figure()
+                plt.title(f'{season}-{humid}')
+                for vege_product in vege_product_list:
+                    for mode in mode_list:
+                        col_name_i = f'{vege_product}_{season}_{mode}'
+                        for col_name in columns_list:
+                            if col_name_i in col_name:
+                                if not '2000-2016' in col_name:
+                                    continue
                                 print(col_name_i)
                                 df_vals = df_HI[col_name]
                                 df_years = df_HI['year']
@@ -4855,7 +4957,9 @@ class Time_series:
                                         vals_list.append(vals_year_mean)
                                 plt.plot(years_list,vals_list,label=f'{col_name}')
                 plt.legend()
-        plt.show()
+                plt.savefig(join(outdir,f'{season}_{humid}.pdf'))
+                plt.close()
+        # plt.show()
 
 def main():
     # Phenology().run()
@@ -4864,12 +4968,12 @@ def main():
     # Dataframe().run()
     # RF().run()
     # Moving_window_RF().run()
-    # Analysis().run()
+    Analysis().run()
     # Moving_window().run()
     # Global_vars().get_valid_pix_df()
     # Drought_event().run()
     # Partial_corr().run()
-    Time_series().run()
+    # Time_series().run()
 
     pass
 

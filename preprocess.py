@@ -56,6 +56,11 @@ vars_info_dic = {
 'unit': 'VPD',
 'start_year':1982,
 },
+'VOD': {
+'path':join(data_root, 'VODCA/per_pix_05'),
+'unit': 'VPD',
+'start_year':1988,
+},
         }
 
 
@@ -1046,12 +1051,68 @@ class VODCA:
         pass
 
     def run(self):
+        # self.check_tif()
+        # self.origin_data_025_per_pix()
+        # self.clean_origin_data_025()
+        # self.dict_to_tif()
         self.resample()
+        # self.per_pix_05()
+        # self.pick_early_peak_late()
+        pass
+
+    def check_tif(self):
+        fdir = join(self.datadir,'tif025')
+        for f in T.listdir(fdir):
+            print(f)
+            fpath = join(fdir,f)
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
+            plt.imshow(array)
+            plt.show()
+
+
+    def origin_data_025_per_pix(self):
+        fdir = join(self.datadir,'tif025')
+        outdir = join(self.datadir,'per_pix_025')
+        T.mk_dir(outdir)
+        Pre_Process().data_transform(fdir,outdir)
+        pass
+
+    def clean_origin_data_025(self):
+
+        fdir = join(self.datadir,'per_pix_025')
+        outdir = join(self.datadir,'per_pix_025_clean')
+        T.mk_dir(outdir)
+        spatial_dict = T.load_npy_dir(fdir,'')
+        spatial_dict_nan_number = {}
+        gs_list = list(range(4,10))
+        new_spatial_dict = {}
+        for pix in tqdm(spatial_dict):
+            vals = spatial_dict[pix]
+            if T.is_all_nan(vals):
+                continue
+            vals_annual = T.monthly_vals_to_annual_val(vals,gs_list,method='mean')
+            vals_nan_number = np.sum(np.isnan(vals_annual))
+            ratio = 1 - vals_nan_number / len(vals_annual)
+            if ratio != 1:
+                continue
+            new_spatial_dict[pix] = vals
+        T.save_distributed_perpix_dic(new_spatial_dict,outdir)
+
+
+
+    def dict_to_tif(self):
+        fdir = join(self.datadir,'per_pix_025_clean')
+        spatial_dict = T.load_npy_dir(fdir)
+        outdir = join(self.datadir,'tif_per_pix_025_clean')
+        T.mk_dir(outdir)
+        DIC_and_TIF(pixelsize=0.25).pix_dic_to_tif_every_time_stamp(spatial_dict,outdir)
+
         pass
 
 
+
     def resample(self):
-        fdir = join(self.datadir,'tif025')
+        fdir = join(self.datadir,'tif_per_pix_025_clean')
         outdir = join(self.datadir,'tif_resample')
         T.mk_dir(outdir)
         for f in tqdm(T.listdir(fdir)):
@@ -1063,6 +1124,22 @@ class VODCA:
             # array_resample = array_resample[::-1]
             DIC_and_TIF().arr_to_tif(array_resample,outf)
 
+
+    def per_pix_05(self):
+        fdir = join(self.datadir,'tif_resample')
+        outdir = join(self.datadir,'per_pix_05')
+        T.mk_dir(outdir)
+        Pre_Process().data_transform(fdir,outdir)
+        pass
+
+    def pick_early_peak_late(self):
+        fdir = join(self.datadir,'per_pix_05')
+        spatial_dict = T.load_npy_dir(fdir)
+        outdir = join(self.datadir,'per_pix_05_pick_early_peak_late')
+        T.mk_dir(outdir)
+
+
+        pass
 
 
 def seasonal_split_ly_NDVI():
