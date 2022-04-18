@@ -1,5 +1,6 @@
 # coding=utf-8
 import cytoolz.curried
+import matplotlib.pyplot as plt
 
 import Main_flow
 from preprocess import *
@@ -4962,9 +4963,10 @@ class Time_series:
             print(col)
         # exit()Data_frame_1982-2020(1).df
         vege_product_list = ['LAI3g','LAI4g','MODIS_LAI','VOD']
+        vege_product_color_dict = {'LAI3g': 'red', 'LAI4g': 'blue', 'MODIS_LAI': 'green', 'VOD': 'black'}
         season_list = ['early','peak','late']
-        mode_list = ['relative_change','raw']
-        # mode_list = ['relative_change']
+        # mode_list = ['relative_change','raw']
+        mode_list = ['relative_change']
         # mode_list = ['raw']
         HI_class_list = T.get_df_unique_val_list(df,'HI_class')
         for humid in ['Humid','Non Humid']:
@@ -5001,9 +5003,12 @@ class Time_series:
                                         vals_year_std = np.nanstd(vals_year)
                                         vals_list.append(vals_year_mean)
                                         std_list.append(vals_year_std)
-                                plt.plot(years_list,vals_list,label=f'{col_name}')
-                                Plot().plot_line_with_error_bar(years_list,vals_list,std_list,label=f'{col_name}')
-                                # plt.show()
+                                # plt.plot(years_list,vals_list,label=f'{col_name}')
+                                plt.plot(years_list,vals_list,label=f'{col_name}',color=vege_product_color_dict[vege_product])
+                                a, b, r, p = T.nan_line_fit(years_list,vals_list)
+                                # plt.plot(years_list,a*np.array(years_list)+b,'--',color='black')
+                                plt.plot(years_list,a*np.array(years_list)+b,'--',color=vege_product_color_dict[vege_product])
+                                # Plot().plot_line_with_error_bar(years_list,vals_list,std_list,label=f'{col_name}')
                     plt.grid(1)
                     plt.legend()
                     plt.savefig(join(outdir,f'{season}_{humid}_{mode}.pdf'))
@@ -5014,20 +5019,21 @@ class Time_series:
         outdir = join(self.this_class_png,'2000_2016')
         T.mk_dir(outdir)
         T.open_path_and_file(outdir)
-        dff = '/Volumes/NVME2T/greening_project_redo/data/vege_dataframe/Data_frame_1982-2020.df'
+        dff = '/Volumes/NVME2T/greening_project_redo/results/Main_flow_1/arr/Time_series/Data_frame_1982-2020.df'
         df = T.load_df(dff)
-        df = df[df['row']>120]
+        df = df[df['row']<120]
         columns_list = df.columns
         for col in columns_list:
             if col == 'pix':
                 continue
             print(col)
-        exit()
+        # exit()
         vege_product_list = ['LAI3g','LAI4g','MODIS_LAI','VOD']
+        vege_product_color_dict = {'LAI3g':'red','LAI4g':'blue','MODIS_LAI':'green','VOD':'black'}
         season_list = ['early','peak','late']
         # mode_list = ['relative_change','raw']
-        # mode_list = ['relative_change']
-        mode_list = ['raw']
+        mode_list = ['relative_change']
+        # mode_list = ['raw']
 
         for humid in ['Humid','Non-Humid']:
             if humid == 'Humid':
@@ -5060,7 +5066,12 @@ class Time_series:
                                         pix = df_year_i['pix']
                                         vals_year_mean = np.nanmean(vals_year)
                                         vals_list.append(vals_year_mean)
-                                plt.plot(years_list,vals_list,label=f'{col_name}')
+                                # plt.plot(years_list,vals_list,label=f'{col_name}')
+                                plt.plot(years_list,vals_list,label=f'{vege_product}',color=vege_product_color_dict[vege_product])
+                                a, b, r, p = T.nan_line_fit(years_list, vals_list)
+                                years_list = np.arange(2000,2017)
+                                years_list = list(years_list)
+                                plt.plot(years_list, a * np.array(years_list) + b, '--', color=vege_product_color_dict[vege_product])
                 plt.legend()
                 plt.savefig(join(outdir,f'{season}_{humid}.pdf'))
                 plt.close()
@@ -5137,6 +5148,182 @@ class Time_series:
         plt.show()
         pass
 
+
+class Plot_Trend_Spatial:
+
+    def __init__(self):
+        self.this_class_arr,self.this_class_tif,self.this_class_png = \
+            T.mk_class_dir('Plot_Trend_Spatial',results_root_main_flow)
+
+    def run(self):
+        self.plot_spatial()
+        pass
+
+    def trend_spatial_pvalue_point_shp(self):
+        fdir = join(self.this_class_tif,'trend_spatial_tif')
+        outdir = join(self.this_class_tif,'trend_spatial_pvalue_point_shp')
+        T.mk_dir(outdir)
+        for f in T.listdir(fdir):
+            if not f.endswith('_p.tif'):
+                continue
+            intif = join(fdir,f)
+            outtif = join(outdir,f)
+            ToRaster().resample_reproj(intif,outtif,res=2)
+        for f in T.listdir(outdir):
+            out_shp_f = join(outdir,f+'.shp')
+            if not f.endswith('_p.tif'):
+                continue
+            arr = ToRaster().raster2array(join(outdir,f))[0]
+            arr = T.mask_999999_arr(arr,warning=False)
+            arr[arr>0.1] = np.nan
+            dic = DIC_and_TIF().spatial_arr_to_dic(arr)
+            point_list = []
+            for pix in dic:
+                val = dic[pix]
+                if np.isnan(val):
+                    continue
+                lon,lat = DIC_and_TIF(tif_template=join(outdir,f)).pix_to_lon_lat(pix)
+                # print(lon,lat)
+                list_i = [lon,lat,1]
+                point_list.append(list_i)
+            T.point_to_shp(point_list,out_shp_f)
+
+
+    def tif_statistic(self,trend_tif,p_tif,vmin,vmax):
+        trend_arr = ToRaster().raster2array(trend_tif)[0]
+        trend_arr = trend_arr[:120]
+        trend_arr = T.mask_999999_arr(trend_arr,warning=False)
+        trend_arr_flatten = trend_arr.flatten()
+        p_arr = ToRaster().raster2array(p_tif)[0]
+        p_arr = p_arr[:120]
+        p_arr = T.mask_999999_arr(p_arr,warning=False)
+        # p_arr = T.remove_np_nan(p_arr)
+
+        trend_dict = DIC_and_TIF().spatial_arr_to_dic(trend_arr)
+        p_dict = DIC_and_TIF().spatial_arr_to_dic(p_arr)
+        dict_all = {'trend':trend_dict,'p':p_dict}
+        df = T.spatial_dics_to_df(dict_all)
+        df = Dataframe().add_Humid_nonhumid(df)
+        # T.print_head_n(df,n=10)
+        ## re index datafram
+        df = df.reset_index()
+        humid_nonhumid_list = ['Humid','Non Humid']
+        humid_nonhumid_result_dict = {}
+        for humid in humid_nonhumid_list:
+            df_humid = df[df['HI_reclass']==humid]
+            trend_values = df_humid['trend'].tolist()
+            trend_hist = np.histogram(trend_values, bins=100, density=True, range=(vmin, vmax))
+            for i,row in tqdm(df_humid.iterrows(),total=len(df_humid)):
+                p = row['p']
+                trend = row['trend']
+                if p < 0.05:
+                    if trend>0:
+                        df_humid.loc[i,'class'] = 'significant_positive\np<0.05'
+                    else:
+                        df_humid.loc[i,'class'] = 'significant_negative\np<0.05'
+                elif 0.05 <= p < 0.1:
+                    if trend>0:
+                        df_humid.loc[i,'class'] = 'positive\n0.05<p<0.1'
+                    else:
+                        df_humid.loc[i,'class'] = 'negative\n0.05<p<0.1'
+                else:
+                    df_humid.loc[i,'class'] = 'not_significant\np>0.1'
+            # sig_ratio_list = ['significant_positive\np<0.05','positive\n0.05<p<0.1','not_significant\np>0.1','negative\n0.05<p<0.1','significant_negative\np<0.05']
+
+            df_sig_pos = df_humid[df_humid['class']=='significant_positive\np<0.05']
+            df_sig_neg = df_humid[df_humid['class']=='significant_negative\np<0.05']
+            df_not_sig = df_humid[df_humid['class']=='not_significant\np>0.1']
+            df_pos = df_humid[df_humid['class']=='positive\n0.05<p<0.1']
+            df_neg = df_humid[df_humid['class']=='negative\n0.05<p<0.1']
+            ratio_sig_pos = len(df_sig_pos)/len(df_humid)
+            ratio_sig_neg = len(df_sig_neg)/len(df_humid)
+            ratio_not_sig = len(df_not_sig)/len(df_humid)
+            ratio_pos = len(df_pos)/len(df_humid)
+            ratio_neg = len(df_neg)/len(df_humid)
+            sig_ratio_dict = {
+                'significant_positive\np<0.05':ratio_sig_pos,
+                'significant_negative\np<0.05':ratio_sig_neg,
+                'not_significant\np>0.1':ratio_not_sig,
+                'positive\n0.05<p<0.1':ratio_pos,
+                'negative\n0.05<p<0.1':ratio_neg
+            }
+            humid_nonhumid_result_dict[humid] = (trend_hist,sig_ratio_dict,trend_arr)
+        return humid_nonhumid_result_dict
+
+    def plot_spatial(self):
+        # fpath = 'MODIS_LAI_peak_relative_change_trend.tif'
+        fdir = join(self.this_class_arr,'spatial_tif/2000-2016')
+        outdir = join(self.this_class_png,'2000-2016_plot')
+        T.mk_dir(outdir)
+        product_list = ['LAI4g','LAI3g','MODIS_LAI','VOD']
+        period_list = ['early','peak','late']
+        mode_list = ['relative_change']
+        tail_list = ['_p_value.tif','_trend.tif']
+        color_list = ['brown','white','green']
+        cmap = T.cmap_blend(color_list)
+        for product in product_list:
+            for period in period_list:
+                for mode in mode_list:
+                    print(product,period,mode)
+                    # 'MODIS_LAI_peak_relative_change_trend.tif'
+                    f_pvalue = f'{product}_{period}_{mode}{tail_list[0]}'
+                    f_trend = f'{product}_{period}_{mode}{tail_list[1]}'
+                    intif_pvalue = join(fdir,f_pvalue)
+                    intif_trend = join(fdir,f_trend)
+                    vmin = -5
+                    vmax = 5
+                    # trend_hist,sig_ratio_dict,trend_arr = self.tif_statistic(intif_trend,intif_pvalue,vmin,vmax)
+                    result_dict = self.tif_statistic(intif_trend,intif_pvalue,vmin,vmax)
+
+                    sig_ratio_list = ['significant_positive\np<0.05','positive\n0.05<p<0.1','not_significant\np>0.1','negative\n0.05<p<0.1','significant_negative\np<0.05']
+                    fig,axs = plt.subplots(2,2,figsize=(10,5))
+                    for humid in result_dict:
+                        trend_hist, sig_ratio_dict, trend_arr = result_dict[humid]
+                        axs[0][0].plot(trend_hist[1][:-1],trend_hist[0],label=humid)
+                        axs[0][0].set_title(f'Histogram')
+                        axs[0][0].set_xlabel('trend')
+                        axs[0][0].set_ylabel('density')
+                        if humid == 'Humid':
+                            axs[0][1].bar(sig_ratio_list,[sig_ratio_dict[i] for i in sig_ratio_list])
+                            axs[0][1].set_ylim(0,0.8)
+                            axs[0][1].set_title(f'{humid}-Significant ratio')
+                            axs[0][1].set_ylabel('ratio')
+                            axs[0][1].xaxis.set_ticks([])
+                            # axs[0][1].set_xticklabels(sig_ratio_list,rotation=45)
+                        else:
+                            axs[1][1].bar(sig_ratio_list, [sig_ratio_dict[i] for i in sig_ratio_list])
+                            axs[1][1].set_ylim(0, 0.8)
+                            axs[1][1].set_title(f'{humid}-Significant ratio')
+                            axs[1][1].set_ylabel('ratio')
+                            axs[1][1].xaxis.set_ticks(sig_ratio_list)
+                            axs[1][1].set_xticklabels(sig_ratio_list, rotation=35)
+                        if humid == 'Humid':
+                            pcm = axs[1][0].imshow(trend_arr,cmap=cmap,vmin=vmin,vmax=vmax,interpolation='nearest')
+                            DIC_and_TIF().plot_back_ground_arr_north_sphere(global_land_tif,ax=axs[1][0])
+                            # axs[1][0].set_title(f'spatial trend')
+                            axs[1][0].axis('off')
+                            fig.colorbar(pcm, ax=axs[1][0], location='bottom', shrink=.3, label='spatial trend')
+                        fig.suptitle(f'{product}_{period}_{mode}')
+                        ## set subplot legends
+                        axs[0][0].legend(loc='upper left')
+                    outf = join(outdir,f'{product}_{period}_{mode}.pdf')
+                    plt.tight_layout()
+                    plt.savefig(outf)
+                    plt.close()
+                    # plt.show()
+
+        # for f in T.listdir(fdir):
+        #     if not f.endswith('.tif'):
+        #         continue
+        #     if not 'trend' in f:
+        #         continue
+        #     intif = join(fdir,f)
+        #     self.tif_statistic(intif)
+
+
+        pass
+
+
 def main():
     # Phenology().run()
     # Get_Monthly_Early_Peak_Late().run()
@@ -5149,7 +5336,8 @@ def main():
     # Global_vars().get_valid_pix_df()
     # Drought_event().run()
     # Partial_corr().run()
-    Time_series().run()
+    # Time_series().run()
+    Plot_Trend_Spatial().run()
 
     pass
 
