@@ -931,6 +931,27 @@ class Pick_Early_Peak_Late_value:
         self.Pick_variables()
         # self.Pick_variables_accumulative()
         # self.Pick_variables_min()
+        # self.df_to_dict()
+        pass
+
+
+    def df_to_dict(self):
+        outdir = join(self.this_class_arr,'df_to_dict')
+        T.mk_dir(outdir)
+        # var_ = 'VOD'
+        var_ = 'LAI4g_101'
+        outdir_var = join(outdir,var_)
+        T.mk_dir(outdir_var)
+        dff = join(self.this_class_arr,'Pick_variables',var_+'.df')
+        df = T.load_df(dff)
+        columns = df.columns
+        for col in columns:
+            if 'pix' in col:
+                continue
+            print(col)
+            dict_ = T.df_to_spatial_dic(df,col)
+            outf = join(outdir_var,col)
+            T.save_npy(dict_,outf)
         pass
 
 
@@ -944,7 +965,9 @@ class Pick_Early_Peak_Late_value:
             # 'Soil moisture',
             # 'CO2',
             # 'Aridity',
-            'VOD',
+            # 'VOD',
+            # 'LAI4g_101',
+            'MODIS_LAI_CMG',
         ]
         EPL_dff = join(Get_Monthly_Early_Peak_Late().this_class_arr,'Monthly_Early_Peak_Late.df')
         EPL_df = T.load_df(EPL_dff)
@@ -976,6 +999,8 @@ class Pick_Early_Peak_Late_value:
             df_i = T.dic_to_df(result_dic,'pix')
             T.save_df(df_i,outf)
             T.df_to_excel(df_i,outf)
+
+
     def Pick_variables_min(self):
         outdir = join(self.this_class_arr,'Pick_variables')
         T.mk_dir(outdir)
@@ -4846,38 +4871,112 @@ class Time_series:
         pass
 
     def run(self):
-        # self.dataframe_all_year()
-        self.dataframe_2000_2016()
+        self.dataframe_all_year()
+        # self.dataframe_2000_2016()
+        # self.plot_ly_data_timeseries()
+        # self.plot_dict()
+        # self.mean_annual_spatial()
         pass
 
+    def mean_annual_spatial(self):
+        # fdir = '/Volumes/NVME2T/greening_project_redo/data/LAI4g_101/per_pix'
+        # title = 'LAI4g'
+        fdir = '/Volumes/NVME2T/greening_project_redo/data/BU_MCD_LAI_CMG/resample_ly_per_pix'
+        title = 'BU_MCD_LAI_CMG'
+
+        dic = T.load_npy_dir(fdir)
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr_mean(dic)
+        arr[arr<-99999] = np.nan
+        plt.imshow(arr,vmin=0,vmax=4)
+        plt.title(title)
+        plt.show()
+        # fdir = '/Volumes/NVME2T/greening_project_redo/data/BU_MCD_LAI_CMG/resample_ly'
+        # outdir = '/Volumes/NVME2T/greening_project_redo/data/BU_MCD_LAI_CMG/resample_ly_per_pix'
+        # T.mk_dir(outdir)
+        # Pre_Process().data_transform(fdir,outdir)
+        # arr_sum = 0
+        # for tif in T.listdir(fdir):
+        #     arr = ToRaster().raster2array(join(fdir,tif))[0]
+
+
+
+    def plot_all_season(self):
+
+        pass
+
+    def plot_dict(self):
+        fdir = '/Volumes/NVME2T/greening_project_redo/data/test_data/0416'
+
+        all_dict = {}
+        key_list = []
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            dic = T.load_npy(fpath)
+            all_dict[f[:-4]] = dic
+            key_list.append(f[:-4])
+        df = T.spatial_dics_to_df(all_dict)
+        df = Dataframe().add_Humid_nonhumid(df)
+        df = Dataframe().add_NDVI_mask(df)
+        df = Dataframe().add_lon_lat_to_df(df)
+        df = df[df['lat']>30]
+        df = df[df['ndvi_mask_mark']==1]
+        df = df[df['HI_reclass']=='Non Humid']
+        df = df.dropna(subset=key_list)
+        for key in key_list:
+            if 'MODIS' in key:
+                start_year = 2000
+            else:
+                start_year = 1982
+            vals = df[key].tolist()
+            vals = np.array(vals)
+            vals_new = []
+            for vals_i in vals:
+                vals_len = len(vals_i)
+                if vals_len < 12:
+                    continue
+                vals_new.append(vals_i)
+            vals_new = np.array(vals_new)
+            vals_mean = np.nanmean(vals_new,axis=0)
+            year_list = list(range(start_year,start_year+len(vals_mean)))
+            plt.plot(year_list,vals_mean,label=key)
+        plt.legend()
+        plt.show()
+
     def dataframe_all_year(self):
-        dff = '/Volumes/NVME2T/greening_project_redo/data/vege_dataframe/Data_frame_1982-2020.df'
+        # dff = '/Volumes/NVME2T/greening_project_redo/data/vege_dataframe/Data_frame_1982-2020.df'
+        # dff = '/Volumes/NVME2T/greening_project_redo/data/vege_dataframe/Data_frame_1982-2020(1).df'
+        dff = '/Volumes/NVME2T/greening_project_redo/results/Main_flow_1/arr/Time_series/Data_frame_1982-2020.df'
+        ndvi_mask_tif = '/Volumes/NVME2T/greening_project_redo/conf/NDVI_mask.tif'
+        ndvi_mask_dic = DIC_and_TIF().spatial_tif_to_dic(ndvi_mask_tif)
         outdir = join(self.this_class_png,'all_year')
         T.mk_dir(outdir)
-        T.open_path_and_file(outdir)
+        # T.open_path_and_file(outdir)
         df = T.load_df(dff)
-        df = df[df['row']>120]
+        df = df[df['row']<120]
+        df = T.add_spatial_dic_to_df(df,ndvi_mask_dic,'ndvi_mask')
+        df = df[df['ndvi_mask']==1]
         columns_list = df.columns
         for col in columns_list:
             if col == 'pix':
                 continue
-            # print(col)
+            print(col)
+        # exit()Data_frame_1982-2020(1).df
         vege_product_list = ['LAI3g','LAI4g','MODIS_LAI','VOD']
         season_list = ['early','peak','late']
-        # mode_list = ['relative_change','raw']
-        mode_list = ['relative_change']
+        mode_list = ['relative_change','raw']
+        # mode_list = ['relative_change']
         # mode_list = ['raw']
-
-        for humid in ['Humid','Non-Humid']:
+        HI_class_list = T.get_df_unique_val_list(df,'HI_class')
+        for humid in ['Humid','Non Humid']:
             if humid == 'Humid':
                 df_HI = df[df['HI_class']=='Humid']
             else:
                 df_HI = df[df['HI_class']!='Humid']
-            for season in season_list:
-                plt.figure()
-                plt.title(f'{season}-{humid}')
-                for vege_product in vege_product_list:
-                    for mode in mode_list:
+            for mode in mode_list:
+                for season in season_list:
+                    plt.figure()
+                    plt.title(f'{season}-{humid}')
+                    for vege_product in vege_product_list:
                         col_name_i = f'{vege_product}_{season}_{mode}'
                         for col_name in columns_list:
                             if col_name_i in col_name:
@@ -4890,6 +4989,7 @@ class Time_series:
                                 df_i = pd.DataFrame({'pix':df_pix,'year':df_years,'vals':df_vals})
                                 years_list = T.get_df_unique_val_list(df_i,'year')
                                 vals_list = []
+                                std_list = []
                                 for year in tqdm(years_list):
                                     df_year_i = df_i[df_i['year'] == year]
                                     if len(df_year_i) == 0:
@@ -4898,13 +4998,18 @@ class Time_series:
                                         vals_year = df_year_i['vals']
                                         pix = df_year_i['pix']
                                         vals_year_mean = np.nanmean(vals_year)
+                                        vals_year_std = np.nanstd(vals_year)
                                         vals_list.append(vals_year_mean)
+                                        std_list.append(vals_year_std)
                                 plt.plot(years_list,vals_list,label=f'{col_name}')
-                plt.grid(1)
-                plt.legend()
-                plt.savefig(join(outdir,f'{season}_{humid}.pdf'))
-                plt.close()
-        plt.show()
+                                Plot().plot_line_with_error_bar(years_list,vals_list,std_list,label=f'{col_name}')
+                                # plt.show()
+                    plt.grid(1)
+                    plt.legend()
+                    plt.savefig(join(outdir,f'{season}_{humid}_{mode}.pdf'))
+                    plt.close()
+                    # plt.show()
+        # plt.show()
     def dataframe_2000_2016(self):
         outdir = join(self.this_class_png,'2000_2016')
         T.mk_dir(outdir)
@@ -4961,6 +5066,77 @@ class Time_series:
                 plt.close()
         # plt.show()
 
+    def cal_relative_change(self,vals):
+        base = np.nanmean(vals)
+        # base = np.nanmean(base)
+        relative_change_list = []
+        for val in vals:
+            change_rate = (val - base) / base
+            relative_change_list.append(change_rate)
+        relative_change_list = np.array(relative_change_list)
+        return relative_change_list
+
+    def ly_data(self,var_name,period,ishumid):
+        start_year = vars_info_dic[var_name]['start_year']
+        fdir = join(Pick_Early_Peak_Late_value().this_class_arr,'Pick_variables')
+        fname = f'{var_name}.df'
+        dff = join(fdir,fname)
+        df = T.load_df(dff)
+        df = Dataframe().add_NDVI_mask(df)
+        df = Dataframe().add_lon_lat_to_df(df)
+        df = Dataframe().add_Humid_nonhumid(df)
+        df = df[df['lat']>30]
+        df = df[df['HI_reclass']==ishumid]
+        spatial_dict = T.df_to_spatial_dic(df,period)
+        # print(spatial_dict)
+        # exit()
+        valid_arr = DIC_and_TIF().pix_dic_to_spatial_arr_mean(spatial_dict)
+        all_vals = []
+        for pix in spatial_dict:
+            vals = spatial_dict[pix]
+            if type(vals) == float:
+                continue
+            if T.is_all_nan(vals):
+                continue
+            # vals = self.cal_relative_change(vals)
+
+            all_vals.append(vals)
+        all_vals = np.array(all_vals)
+        all_vals_mean = np.nanmean(all_vals,axis=0)
+        x_list = np.arange(len(all_vals_mean))+start_year
+        plt.plot(x_list,all_vals_mean,label=f'{var_name}')
+        plt.title(f'{period}-{ishumid}')
+        return valid_arr
+
+    def plot_ly_data_timeseries(self):
+        var_list = ['LAI4g_101','MODIS_LAI_CMG']
+        period_list = ['early','peak','late']
+        vmin_max_dict = {
+            'early':{'vmin':0,'vmax':2},
+            'peak':{'vmin':0,'vmax':3.5},
+            'late':{'vmin':0,'vmax':2},
+        }
+        ishumid = 'Non Humid'
+        # ishumid = 'Humid'
+        for period in period_list:
+            # if not period == 'late':
+            #     continue
+            plt.figure()
+            arr_list = []
+            for var_name in var_list:
+                valid_arr = self.ly_data(var_name,period,ishumid)
+                arr_list.append(valid_arr)
+            plt.legend()
+            plt.grid()
+            for i in range(len(arr_list)):
+                plt.figure()
+                plt.imshow(arr_list[i],vmin=vmin_max_dict[period]['vmin'],vmax=vmin_max_dict[period]['vmax'],cmap='jet_r')
+                plt.colorbar()
+                DIC_and_TIF().plot_back_ground_arr_north_sphere(global_land_tif)
+                plt.title(f'{var_list[i]}_{period}_{ishumid}')
+        plt.show()
+        pass
+
 def main():
     # Phenology().run()
     # Get_Monthly_Early_Peak_Late().run()
@@ -4968,12 +5144,12 @@ def main():
     # Dataframe().run()
     # RF().run()
     # Moving_window_RF().run()
-    Analysis().run()
+    # Analysis().run()
     # Moving_window().run()
     # Global_vars().get_valid_pix_df()
     # Drought_event().run()
     # Partial_corr().run()
-    # Time_series().run()
+    Time_series().run()
 
     pass
 
