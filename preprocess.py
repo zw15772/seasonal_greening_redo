@@ -1,8 +1,6 @@
 # coding=utf-8
 import zipfile
 
-import numpy as np
-
 from __init__ import *
 import ee
 global_land_tif = join(this_root,'conf/land.tif')
@@ -16,16 +14,16 @@ global_season_dic = [
 ]
 
 vars_info_dic = {
-'LAI_3g': {
-'path':join(data_root, 'LAI_3g/per_pix'),
-'unit': 'm2/m2',
-'start_year':1982,
-},
-'SPEI': {
-'path':join(data_root, 'original_dataset/SPEI3_dic'),
-'unit': 'SPEI',
-'start_year':1982,
-},
+# 'LAI_3g': {
+# 'path':join(data_root, 'LAI_3g/per_pix'),
+# 'unit': 'm2/m2',
+# 'start_year':1982,
+# },
+# 'SPEI': {
+# 'path':join(data_root, 'original_dataset/SPEI3_dic'),
+# 'unit': 'SPEI',
+# 'start_year':1982,
+# },
 'Temperature': {
 'path':join(data_root, 'original_dataset/temperature_dic'),
 'unit': 'Celsius',
@@ -60,6 +58,16 @@ vars_info_dic = {
 'path':join(data_root, 'VODCA/per_pix_05'),
 'unit': 'VPD',
 'start_year':1988,
+},
+'LAI4g_101': {
+'path':join(data_root, 'LAI4g_101/per_pix'),
+'unit': 'm2/m2',
+'start_year':1982,
+},
+'MODIS_LAI_CMG': {
+'path':join(data_root, 'BU_MCD_LAI_CMG/resample_bill_05_monthly_max_compose_per_pix'),
+'unit': 'm2/m2',
+'start_year':2000,
 },
         }
 
@@ -1142,6 +1150,56 @@ class VODCA:
         pass
 
 
+class LAI_4g_v101:
+    def __init__(self):
+        self.datadir = join(data_root, 'LAI4g_101')
+        pass
+
+    def run(self):
+        # self.rename()
+        # self.monthly_compose()
+        # self.resample()
+        self.per_pix()
+
+    def rename(self):
+        fdir = join(self.datadir,'GIMMS_LAI_4g_ver101')
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir,f)
+            new_name = f.split('_')[-1]
+            new_name = new_name.replace('.tif','')
+            new_name = new_name + '0.tif'
+            os.rename(fpath,join(fdir,new_name))
+        pass
+
+    def monthly_compose(self):
+        fdir = join(self.datadir,'GIMMS_LAI_4g_ver101')
+        outdir = join(self.datadir,'GIMMS_LAI_4g_ver101_monthly_compose')
+        T.mk_dir(outdir)
+        Pre_Process().monthly_compose(fdir,outdir,method='max')
+
+
+    def resample(self):
+        fdir = join(self.datadir,'GIMMS_LAI_4g_ver101_monthly_compose')
+        outdir = join(self.datadir,'GIMMS_LAI_4g_ver101_monthly_compose_resample')
+        T.open_path_and_file(outdir)
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir,f)
+            outf = join(outdir,f)
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
+            target_res = 0.5
+            original_res = pixelWidth
+            array_resample = T.resample_nan(array,target_res,original_res)
+            # array_resample[array_resample == 0] = np.nan
+            DIC_and_TIF().arr_to_tif(array_resample,outf)
+            # exit()
+
+    def per_pix(self):
+        fdir = join(self.datadir,'GIMMS_LAI_4g_ver101_monthly_compose_resample')
+        outdir = join(self.datadir,'per_pix')
+        T.mk_dir(outdir)
+        Pre_Process().data_transform(fdir,outdir)
+
 def seasonal_split_ly_NDVI():
     fdir = join(data_root, 'NDVI_ly/per_pix')
     outdir = join(data_root, 'NDVI_ly/per_pix_seasonal')
@@ -1164,96 +1222,119 @@ def seasonal_split_ly_NDVI():
 
 
 
-class Resample:
+class MODIS_LAI_BU_CMG:
 
     def __init__(self):
         self.datadir = join(data_root,'BU_MCD_LAI_CMG')
-        pass
-
 
     def run(self):
-        self.resample()
+        # self.resample_bill()
+        # self.rename()
+        # self.monthly_compose()
+        self.per_pix()
         pass
 
-    def resample_i(self,array,target_res,original_res):
-        array = array.astype(np.float32)
-        array[array == -999999] = np.nan
-        window_len = int(target_res / original_res)
-        array_row_new = len(array) / window_len
-        array_col_new = len(array[0]) / window_len
-        array_row_new = int(array_row_new)
-        array_col_new = int(array_col_new)
-        matrix = []
-        for i in range(array_row_new):
-            row = array[i * window_len:(i + 1) * window_len]
-            temp = []
-            for j in range(array_col_new):
-                row_T = row.T
-                col_T = row_T[j * window_len:(j + 1) * window_len]
-                matrix_i = col_T.T
-                ## count the number of nan
-                matrix_i_flat = matrix_i.flatten()
-                nan_flag = np.isnan(matrix_i_flat)
-                nan_number = T.count_num(nan_flag, True)
-                nan_ratio = nan_number / len(matrix_i_flat)
-                if nan_ratio > 0.5:
-                    mean_matrix_i = np.nan
-                else:
-                    mean_matrix_i = np.nansum(matrix_i) / len(matrix_i_flat)
-                    # temp.append(np.nanmean(mean_matrix_i))
-                temp.append(mean_matrix_i)
-            # print(temp)
-            temp = np.array(temp)
-            matrix.append(temp)
-        matrix = np.array(matrix)
-        matrix[matrix == 0] = np.nan
+    def __mat_to_tif(self,mat_f,outf):
+        mat_f_r = scipy.io.loadmat(mat_f)
+        print(mat_f_r.items())
+        print(mat_f_r)
+        exit()
+        # print(mat_f_r.keys())
+        matrix = mat_f_r['outmat']
+        lai_arr = matrix[0][0][0]  ## band 1
+        # lai_arr = matrix[0][0][1] ## band 2
+        # lai_arr = matrix[0][0][2]
+        # lai_arr = matrix[0][0][3]
+        # lai_arr = matrix[0][0][4]
+        lai_arr = np.array(lai_arr)
+        lai_arr[lai_arr > 200] = np.nan
+        lai_arr = lai_arr / 10.
+        DIC_and_TIF(pixelsize=0.05).arr_to_tif(lai_arr,outf)
 
-        pass
+    def mat_to_tif(self):
 
-
-    def resample(self):
-        fdir = join(self.datadir,'tif')
-        outdir = join(self.datadir,'resample_ly')
+        fdir = join(self.datadir,'BU_MCD_LAI_CMG005_NSustain_00_19')
+        outdir = join(self.datadir,'tif')
+        # outdir = join(self.datadir,'weight_tif')
+        # outdir = join(self.datadir,'n_good_veg_tif')
+        # outdir = join(self.datadir,'n_bad_veg_tif')
+        # outdir = join(self.datadir,'n_non_veg_tif')
         T.mk_dir(outdir)
         T.open_path_and_file(outdir)
-        target_res = 0.5
         for f in tqdm(T.listdir(fdir)):
-            fpath = join(fdir,f)
-            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
-            # print(pixelWidth,pixelHeight)
-            array = array.astype(np.float32)
-            array[array == -999999] = np.nan
-            window_len = int(target_res/pixelWidth)
-            array_row_new = len(array) / window_len
-            array_col_new = len(array[0]) / window_len
-            array_row_new = int(array_row_new)
-            array_col_new = int(array_col_new)
-            matrix = []
-            for i in range(array_row_new):
-                row = array[i*window_len:(i+1)*window_len]
-                temp = []
-                for j in range(array_col_new):
-                    row_T = row.T
-                    col_T = row_T[j*window_len:(j+1)*window_len]
-                    matrix_i = col_T.T
-                    ## count the number of nan
-                    matrix_i_flat = matrix_i.flatten()
-                    nan_flag = np.isnan(matrix_i_flat)
-                    nan_number = T.count_num(nan_flag,True)
-                    nan_ratio = nan_number/len(matrix_i_flat)
-                    if nan_ratio > 0.5:
-                        mean_matrix_i = np.nan
-                    else:
-                        mean_matrix_i = np.nansum(matrix_i) / len(matrix_i_flat)
-                        # temp.append(np.nanmean(mean_matrix_i))
-                    temp.append(mean_matrix_i)
-                # print(temp)
-                temp = np.array(temp)
-                matrix.append(temp)
-            matrix = np.array(matrix)
-            matrix[matrix==0] = np.nan
-            DIC_and_TIF().arr_to_tif(matrix,join(outdir,f))
+            outf = join(outdir,f.replace('.mat','.tif'))
+            self.__mat_to_tif(join(fdir,f),outf)
 
+        pass
+
+    def resample_gdal(self):
+        fdir = join(self.datadir,'tif')
+        outdir = join(self.datadir,'tif_05')
+        T.mk_dir(outdir)
+        T.open_path_and_file(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            outf = join(outdir,f)
+            ToRaster().resample_reproj(join(fdir,f),outf,res=0.5)
+
+    def resample_bill(self):
+        fdir = join(self.datadir,'tif')
+        outdir = join(self.datadir,'resample_bill')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir, f)
+            outf = join(outdir, f)
+            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
+            array_resample = T.resample_nan(array, 0.5, pixelWidth)
+            # array_resample[array_resample == 0] = np.nan
+            # array_resample = array_resample[::-1]
+            DIC_and_TIF().arr_to_tif(array_resample, outf)
+    def rename(self):
+        fdir = join(self.datadir,'resample_bill')
+        for f in tqdm(T.listdir(fdir)):
+            f_split = f.split('_')
+            doy = f_split[-3]
+            new_name = doy + '.tif'
+            os.rename(join(fdir,f),join(fdir,new_name))
+
+
+    def monthly_compose(self):
+        # compose_method = 'mean'
+        compose_method = 'max'
+        fdir = join(self.datadir,'resample_bill')
+        outdir = join(self.datadir,f'resample_bill_05_monthly_{compose_method}_compose')
+        T.mk_dir(outdir)
+        T.open_path_and_file(outdir)
+        Pre_Process().monthly_compose(fdir,outdir,date_fmt='doy',method=compose_method)
+
+    def per_pix(self):
+        fdir = join(self.datadir,'resample_bill_05_monthly_max_compose')
+        outdir = join(self.datadir,'resample_bill_05_monthly_max_compose_per_pix')
+        T.mk_dir(outdir)
+        T.open_path_and_file(outdir)
+        year_list = [str(i) for i in range(2000,2020)]
+        month_list = [f'{i:02d}' for i in range(1,13)]
+        date_list = []
+        for y in year_list:
+            for m in month_list:
+                date_list.append(f'{y}{m}.tif')
+        Pre_Process().data_transform_with_date_list(fdir,outdir,date_list=date_list)
+        pass
+
+
+def check_per_pix_data():
+    dff = '/Volumes/NVME2T/greening_project_redo/results/Main_flow_1/arr/Pick_Early_Peak_Late_value/Pick_variables/MODIS_LAI_CMG.df'
+    df = T.load_df(dff)
+    spatial_dic = T.df_to_spatial_dic(df,'peak')
+    for pix in spatial_dic:
+        if not pix == (26,567):
+            continue
+        vals = spatial_dic[pix]
+        plt.plot(vals)
+        plt.grid()
+        plt.show()
+
+
+    pass
 
 def main():
     # LAI().run()
@@ -1264,7 +1345,9 @@ def main():
     # CCI_SM().run()
     # LAI_4g().run()
     # LAI_3g().run()
-    VODCA().run()
+    # VODCA().run()
+    # LAI_4g_v101().run()
+    # MODIS_LAI_BU_CMG().run()
     # check_cci_sm()
     # f = '/Volumes/NVME2T/greening_project_redo/data/GEE_AVHRR_LAI/per_pix_clean/per_pix_dic_005.npy'
     # dic = T.load_npy(f)
@@ -1274,7 +1357,7 @@ def main():
     #     plt.plot(vals)
     #     plt.show()
     # Resample().run()
-
+    check_per_pix_data()
     pass
 
 

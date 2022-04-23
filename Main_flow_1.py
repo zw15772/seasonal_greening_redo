@@ -929,12 +929,45 @@ class Pick_Early_Peak_Late_value:
 
 
     def run(self):
-        self.Pick_variables()
+        # self.Pick_variables()
+        # self.Pick_variables_all_gs()
         # self.Pick_variables_accumulative()
         # self.Pick_variables_min()
         # self.df_to_dict()
+        self.check_nan_num()
         pass
 
+
+
+    def check_nan_num(self):
+        x_var = 'Soil moisture'
+        # dff = join(self.this_class_arr,f'Pick_variables/{x_var}.df')
+        dff = join(self.this_class_arr,f'Pick_variables_all_gs/{x_var}.df')
+        df = T.load_df(dff)
+        df = Dataframe().add_NDVI_mask(df)
+        # period_list = ['early','peak','late']
+        period_list = ['all_gs']
+        for period in period_list:
+            dic = T.df_to_spatial_dic(df,period)
+            spatial_dic = {}
+            for pix in dic:
+                vals = dic[pix]
+                if type(vals)==float:
+                    continue
+                is_nan_list = np.isnan(vals)
+                nan_num = T.count_num(is_nan_list,False)
+                # spatial_dic[pix] = 1
+                spatial_dic[pix] = nan_num/len(vals)
+            arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
+            arr = arr[:180]
+            plt.figure()
+            DIC_and_TIF().plot_back_ground_arr(global_land_tif,aspect='auto')
+            plt.imshow(arr,aspect='auto')
+            plt.title(period)
+            plt.colorbar()
+        plt.show()
+
+        pass
 
     def df_to_dict(self):
         outdir = join(self.this_class_arr,'df_to_dict')
@@ -955,6 +988,36 @@ class Pick_Early_Peak_Late_value:
             T.save_npy(dict_,outf)
         pass
 
+    def Pick_variables_all_gs(self):
+        outdir = join(self.this_class_arr,'Pick_variables_all_gs')
+        T.mk_dir(outdir)
+        var_list = [
+            # 'LAI_3g',
+            # 'SPEI',
+            # 'Temperature',
+            'Soil moisture',
+            # 'CO2',
+            # 'Aridity',
+            # 'VOD',
+            # 'LAI4g_101',
+            # 'MODIS_LAI_CMG',
+        ]
+        for variable in var_list:
+            outf = join(outdir,variable+'.df')
+            fdir = vars_info_dic[variable]['path']
+            start_year = vars_info_dic[variable]['start_year']
+            dic = T.load_npy_dir(fdir)
+            result_dic = {}
+            for pix in tqdm(dic,desc=variable):
+                vals = dic[pix]
+                vals = np.array(vals)
+                vals[vals<-999] = np.nan
+                annual_vals = T.monthly_vals_to_annual_val(vals,grow_season=list(range(4,11)))
+                season_dict = {'all_gs':annual_vals}
+                result_dic[pix] = season_dict
+            df_i = T.dic_to_df(result_dic,'pix')
+            T.save_df(df_i,outf)
+            T.df_to_excel(df_i,outf)
 
     def Pick_variables(self):
         outdir = join(self.this_class_arr,'Pick_variables')
@@ -963,12 +1026,12 @@ class Pick_Early_Peak_Late_value:
             # 'LAI_3g',
             # 'SPEI',
             # 'Temperature',
-            # 'Soil moisture',
+            'Soil moisture',
             # 'CO2',
             # 'Aridity',
             # 'VOD',
             # 'LAI4g_101',
-            'MODIS_LAI_CMG',
+            # 'MODIS_LAI_CMG',
         ]
         EPL_dff = join(Get_Monthly_Early_Peak_Late().this_class_arr,'Monthly_Early_Peak_Late.df')
         EPL_df = T.load_df(EPL_dff)
@@ -5327,7 +5390,7 @@ class Plot_Trend_Spatial:
 def main():
     # Phenology().run()
     # Get_Monthly_Early_Peak_Late().run()
-    # Pick_Early_Peak_Late_value().run()
+    Pick_Early_Peak_Late_value().run()
     # Dataframe().run()
     # RF().run()
     # Moving_window_RF().run()
@@ -5337,7 +5400,7 @@ def main():
     # Drought_event().run()
     # Partial_corr().run()
     # Time_series().run()
-    Plot_Trend_Spatial().run()
+    # Plot_Trend_Spatial().run()
 
     pass
 
