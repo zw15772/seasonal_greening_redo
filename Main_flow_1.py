@@ -3157,6 +3157,11 @@ class Analysis:
         plt.show()
         pass
 
+    def plot_product_accordance(self):
+
+
+        pass
+
 class Dataframe:
 
     def __init__(self):
@@ -5317,6 +5322,8 @@ class Plot_Trend_Spatial:
     def plot_spatial(self):
         # fpath = 'MODIS_LAI_peak_relative_change_trend.tif'
         fdir = join(self.this_class_arr,'spatial_tif/2000-2016')
+        T.open_path_and_file(fdir)
+        exit()
         outdir = join(self.this_class_png,'2000-2016_plot')
         T.mkdir(outdir)
         product_list = ['LAI4g','LAI3g','MODIS_LAI','VOD']
@@ -5618,10 +5625,11 @@ class Sankey_plot_max_contribution:
 
     def __init__(self):
         # self.Y_name = 'LAI3g'
-        self.Y_name = 'LAI4g'
+        # self.Y_name = 'LAI4g'
+        self.Y_name = 'MODIS-LAI'
         self.var_list = ['CCI_SM', 'CO2', 'PAR', 'Temp', 'VPD']
         self.period_list = ['early', 'peak', 'late']
-        self.fdir = f'/Volumes/NVME2T/greening_project_redo/data/Sankey_plot_data/{self.Y_name}'
+        self.fdir = f'/Volumes/NVME2T/greening_project_redo/data/Sankey_plot_data/partial_corr/{self.Y_name}'
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Sankey_plot_max_contribution',results_root_main_flow)
         outdir = join(self.this_class_arr,f'{self.Y_name}')
         T.mkdir(outdir)
@@ -5635,14 +5643,15 @@ class Sankey_plot_max_contribution:
         # df,var_list = self.join_dataframe(self.fdir)
         # df = self.build_sankey_plot(df,var_list)
         # #
-        df = self.__gen_df_init()
+        # df = self.__gen_df_init()
         # df = Dataframe().add_Humid_nonhumid(df)
         # T.save_df(df,self.dff)
         # T.df_to_excel(df,self.dff)
 
         # self.plot_Sankey(df,True)
         # self.plot_Sankey(df,False)
-        self.plot_max_corr_spatial(df)
+        # self.plot_max_corr_spatial(df)
+        self.max_contribution_bar()
         pass
 
     def __load_df(self):
@@ -5660,10 +5669,13 @@ class Sankey_plot_max_contribution:
             return df
 
     def plot_max_corr_spatial(self,df):
+        outdir = join(self.this_class_tif,'plot_max_corr_spatial')
+        T.mkdir(outdir)
+        T.open_path_and_file(outdir)
         period_list = self.period_list
         var_list = self.var_list
         var_color_dict = {'CCI_SM':'#ff7f0e','CO2':'#1f77b4','PAR':'#2ca02c','Temp':'#9467bd','VPD':'#d62728'}
-        var_value_dict = {'CCI_SM':0,'CO2':1,'PAR':2,'Temp':3,'VPD':4,'None':np.nan}
+        var_value_dict = {'CCI_SM':0,'CO2':1,'PAR':2,'Temp':3,'VPD':4,'None':np.nan,'nan':np.nan}
         color_list = []
         for var_ in var_list:
             color_list.append(var_color_dict[var_])
@@ -5681,13 +5693,15 @@ class Sankey_plot_max_contribution:
                 spatial_dict_value[pix] = value
             arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_value)
             arr = arr[:180]
-            plt.figure()
-            DIC_and_TIF().plot_back_ground_arr(global_land_tif,aspect='auto')
-            plt.imshow(arr, cmap=cmap,aspect='auto')
-            plt.colorbar()
-            plt.title(f'{self.Y_name}_{period}')
+            # plt.figure()
+            # DIC_and_TIF().plot_back_ground_arr(global_land_tif,aspect='auto')
+            # plt.imshow(arr, cmap=cmap,aspect='auto')
+            # plt.colorbar()
+            # plt.title(f'{self.Y_name}_{period}')
             # T.plot_colors_palette(cmap)
-        plt.show()
+            outf = join(outdir,f'{self.Y_name}_{period}.tif')
+            DIC_and_TIF().arr_to_tif(arr,outf)
+        # plt.show()
 
     def join_dataframe(self,fdir):
 
@@ -5735,7 +5749,7 @@ class Sankey_plot_max_contribution:
                     value = row[var_]
                     value = abs(value)
                     value_dict[var_] = value
-                max_key = self.get_max_key_from_dict(value_dict)
+                max_key = T.get_max_key_from_dict(value_dict)
                 df.loc[i,f'{period}_max_var'] = max_key
         T.save_df(df, self.dff)
         T.df_to_excel(df, self.dff)
@@ -5883,6 +5897,69 @@ class Sankey_plot_max_contribution:
         plt.show()
 
         pass
+
+    def max_contribution_bar(self):
+        fdir = '/Volumes/NVME2T/greening_project_redo/results/Main_flow_1/tif/Sankey_plot_max_contribution/plot_max_corr_spatial'
+        outdir = join(self.this_class_png, 'max_contribution_bar')
+        T.mkdir(outdir)
+        T.open_path_and_file(outdir)
+        var_value_dict = {'CCI_SM': 0, 'CO2': 1, 'PAR': 2, 'Temp': 3, 'VPD': 4}
+        color_dict = {'CCI_SM': '#00E7FF', 'CO2': '#00FF00', 'PAR': '#FFFF00', 'Temp': '#FF0000', 'VPD': '#B531AF'}
+        var_value_dict_reverse = T.reverse_dic(var_value_dict)
+        all_dict = {}
+        product_list = []
+        period_list = []
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            print(f)
+            fname = f.split('.')[0]
+            product,period = fname.split('_')
+            product_list.append(product)
+            period_list.append(period)
+            arr = ToRaster().raster2array(join(fdir, f))[0]
+            arr = T.mask_999999_arr(arr,warning=False)
+            dic = DIC_and_TIF().spatial_arr_to_dic(arr)
+            key = f'{product}_{period}'
+            all_dict[key] = dic
+        df = T.spatial_dics_to_df(all_dict)
+        df = Dataframe().add_Humid_nonhumid(df)
+        humid_var = 'HI_reclass'
+        humid_list = T.get_df_unique_val_list(df, humid_var)
+        for humid in humid_list:
+            df_humid = df[df[humid_var] == humid]
+            fig,axs = plt.subplots(3,3,figsize=(10,10))
+            product_list = list(set(product_list))
+            period_list = ['early','peak','late']
+            for m,product in enumerate(product_list):
+                for n,period in enumerate(period_list):
+                    col = f'{product}_{period}'
+                    df_i = df_humid[col]
+                    df_i = df_i.dropna()
+                    unique_value = T.get_df_unique_val_list(df_humid,col)
+                    x_list = []
+                    y_list = []
+                    color_list = []
+                    for val in unique_value:
+                        df_i_i = df_i[df_i == val]
+                        ratio = len(df_i_i)/len(df_i) * 100
+                        x = var_value_dict_reverse[int(val)][0]
+                        x_list.append(x)
+                        y_list.append(ratio)
+                        color_list.append(color_dict[x])
+                    # plt.figure()
+                    # print(m,n)
+                    axs[m][n].bar(x_list,y_list,color=color_list)
+                    axs[m][n].set_title(f'{product}_{period}')
+                    axs[m][n].set_ylim(0,47)
+            plt.suptitle(f'{humid}')
+            plt.tight_layout()
+            outf = join(outdir, f'{humid}.pdf')
+            plt.savefig(outf)
+            plt.close()
+
+        pass
+
 class Sankey_plot_single_max_contribution:
 
     def __init__(self):
@@ -6198,9 +6275,9 @@ def main():
     # Drought_event().run()
     # Partial_corr().run()
     # Time_series().run()
-    # Plot_Trend_Spatial().run()
+    Plot_Trend_Spatial().run()
     # Sankey_plot().run()
-    Sankey_plot_max_contribution().run()
+    # Sankey_plot_max_contribution().run()
     # Sankey_plot_single_max_contribution().run()
 
     pass
