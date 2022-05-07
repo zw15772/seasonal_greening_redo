@@ -1507,7 +1507,7 @@ class Analysis:
 
     def run(self):
         # self.Greeing_trend()
-        self.Greeing_trend_relative_change()
+        # self.Greeing_trend_relative_change()
         # self.Greeing_trend_combine()
         # self.Greeing_trend_lc_ratio()
         # self.Greeing_trend_lc_tif()
@@ -1532,7 +1532,46 @@ class Analysis:
         # self.correlation_pdf_sos_vs_vegetation()
         # self.correlation_positive_sos_trend()
         # self.carryover_effect_sm()
+        self.product_comparison_statistics()
         pass
+
+    def product_comparison_statistics(self):
+        fdir = '/Volumes/NVME2T/greening_project_redo/data/product_comparison_2000-2018'
+        outdir = join(self.this_class_png,'product_comparison_2000-2018')
+        T.mkdir(outdir)
+        T.open_path_and_file(outdir)
+        dic_all = {}
+        for f in T.listdir(fdir):
+            dic_i = DIC_and_TIF().spatial_tif_to_dic(join(fdir,f))
+            key = f.split('.')[0]
+            dic_all[key] = dic_i
+        df = T.spatial_dics_to_df(dic_all)
+        df = Dataframe().add_lon_lat_to_df(df)
+        df = df[df['lat']>30]
+        period_list = ['early','peak','late']
+        df = df.dropna()
+        for period in period_list:
+            unique_value = T.get_df_unique_val_list(df,period)
+            total = 0
+            plt.figure()
+            for uv in unique_value:
+                if uv == 1:
+                    continue
+                df_i = df[df[period]==uv]
+                ratio = len(df_i)/len(df)
+                total += ratio
+                # print(uv,ratio*100)
+                plt.bar(uv,ratio*100)
+            plt.ylim(0,60)
+            plt.title(f'{period}')
+            plt.savefig(join(outdir,f'{period}.pdf'))
+            plt.close()
+            # print(unique_value)
+        # plt.show()
+
+
+        pass
+
 
 
     def nan_linear_fit(self, val1_list, val2_list):
@@ -3332,7 +3371,7 @@ class Dataframe:
         df = T.add_spatial_dic_to_df(df,P_PET_dic_reclass,'HI_reclass')
         df = T.add_spatial_dic_to_df(df, P_PET_dic_reclass, 'HI_class')
         df = df.dropna(subset=['HI_class'])
-        df.loc[df['HI_reclass'] != 'Humid', ['HI_reclass']] = 'Non Humid'
+        df.loc[df['HI_reclass'] != 'Humid', ['HI_reclass']] = 'Dryland'
         return df
 
     def add_lc(self,df):
@@ -3371,11 +3410,11 @@ class Moving_window:
         # exit()
         # self.single_correlation()
         # self.single_correlation_matrix_plot()
-        # self.single_correlation_pdf_plot()
+        self.single_correlation_pdf_plot()
         # self.single_correlation_time_series_plot()
 
         # self.trend()
-        self.trend_with_advanced_sos()
+        # self.trend_with_advanced_sos()
         # self.check_moving_window_sos_trend()
         # self.trend_time_series_plot()
         # self.trend_matrix_plot()
@@ -5321,10 +5360,8 @@ class Plot_Trend_Spatial:
 
     def plot_spatial(self):
         # fpath = 'MODIS_LAI_peak_relative_change_trend.tif'
-        fdir = join(self.this_class_arr,'spatial_tif/2000-2016')
-        T.open_path_and_file(fdir)
-        exit()
-        outdir = join(self.this_class_png,'2000-2016_plot')
+        fdir = join(self.this_class_arr,'spatial_tif/2000-2018')
+        outdir = join(self.this_class_png,'2000-2018_plot')
         T.mkdir(outdir)
         product_list = ['LAI4g','LAI3g','MODIS_LAI','VOD']
         period_list = ['early','peak','late']
@@ -5643,15 +5680,15 @@ class Sankey_plot_max_contribution:
         # df,var_list = self.join_dataframe(self.fdir)
         # df = self.build_sankey_plot(df,var_list)
         # #
-        # df = self.__gen_df_init()
-        # df = Dataframe().add_Humid_nonhumid(df)
+        df = self.__gen_df_init()
+        df = Dataframe().add_Humid_nonhumid(df)
         # T.save_df(df,self.dff)
         # T.df_to_excel(df,self.dff)
 
-        # self.plot_Sankey(df,True)
-        # self.plot_Sankey(df,False)
+        self.plot_Sankey(df,True)
+        self.plot_Sankey(df,False)
         # self.plot_max_corr_spatial(df)
-        self.max_contribution_bar()
+        # self.max_contribution_bar()
         pass
 
     def __load_df(self):
@@ -5783,11 +5820,11 @@ class Sankey_plot_max_contribution:
             outdir = join(self.this_class_png, f'{self.Y_name}/Humid')
             title = 'Humid'
         else:
-            df = df[df['HI_reclass'] == 'Non Humid']
-            outdir = join(self.this_class_png, f'{self.Y_name}/Non_Humid')
-            title = 'Non Humid'
+            df = df[df['HI_reclass'] == 'Dryland']
+            outdir = join(self.this_class_png, f'{self.Y_name}/Dryland')
+            title = 'Dryland'
         T.mkdir(outdir,force=True)
-        T.open_path_and_file(outdir)
+        # T.open_path_and_file(outdir)
         var_list = self.__get_var_list(self.fdir)
 
         period_list = ['early','peak','late']
@@ -5825,20 +5862,28 @@ class Sankey_plot_max_contribution:
         node_list_with_ratio = []
         node_name_list = []
         for early_status in early_max_var_list:
+            # print(early_status)
+            # exit()
             df_early = df[df[early_max_var_col] == early_status]
+            vals = df_early[early_status].tolist()
+            vals_mean = np.nanmean(vals)
             ratio = len(df_early)/len(df)
             node_list_with_ratio.append(ratio)
-            node_name_list.append(early_status)
+            node_name_list.append(f'{early_status} {vals_mean:.2f}')
         for peak_status in peak_max_var_list:
             df_peak = df[df[peak_max_var_col] == peak_status]
+            vals = df_peak[peak_status].tolist()
+            vals_mean = np.nanmean(vals)
             ratio = len(df_peak)/len(df)
             node_list_with_ratio.append(ratio)
-            node_name_list.append(peak_status)
+            node_name_list.append(f'{peak_status} {vals_mean:.2f}')
         for late_status in late_max_var_list:
             df_late = df[df[late_max_var_col] == late_status]
+            vals = df_late[late_status].tolist()
+            vals_mean = np.nanmean(vals)
             ratio = len(df_late)/len(df)
             node_list_with_ratio.append(ratio)
-            node_name_list.append(late_status)
+            node_name_list.append(f'{late_status} {vals_mean:.2f}')
         node_list_with_ratio = [round(i,3) for i in node_list_with_ratio]
 
         for early_status in early_max_var_list:
@@ -6262,6 +6307,77 @@ class Sankey_plot_single_max_contribution:
 
         pass
 
+
+class Moving_window_1:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = \
+            T.mk_class_dir('Moving_window_1', results_root_main_flow)
+        pass
+
+
+    def run(self):
+        fdir = join(self.this_class_arr,'1982-2020_during_late_window15_LAI4g')
+        period = 'late'
+        self.plot_pdf(fdir,period)
+        pass
+
+    def plot_pdf(self,fdir,period):
+
+        outdir = join(self.this_class_png, period)
+        T.mkdir(outdir)
+        T.open_path_and_file(outdir)
+        dic_all = {}
+        variables_list = []
+        window_list = []
+        for f in tqdm(T.listdir(fdir)):
+            if not f.endswith('correlation.npy'):
+                continue
+            dic = T.load_npy(join(fdir, f))
+            dic_new = {}
+            for pix in dic:
+                dic_i = dic[pix]
+                dic_i_new = {}
+                for key_i in dic_i:
+                    val_i = dic_i[key_i]
+                    new_key_i = key_i.split(f'_{period}')[0]
+                    if not new_key_i in variables_list:
+                        variables_list.append(new_key_i)
+                    dic_i_new[new_key_i] = val_i
+                dic_new[pix] = dic_i_new
+            window = f.split('.')[0].split('_')[-2]
+            window = window.replace('window','')
+            window = int(window)
+            dic_all[window] = dic_new
+            window_list.append(window)
+        gradient_color = KDE_plot().makeColours(window_list, 'Spectral')
+
+        df = T.spatial_dics_to_df(dic_all)
+        df = Dataframe().add_Humid_nonhumid(df)
+        humid_var = 'HI_reclass'
+        humid_list = T.get_df_unique_val_list(df, humid_var)
+        for humid in humid_list:
+            df_humid = df[df[humid_var] == humid]
+            for var_ in variables_list:
+                for w in window_list:
+                    spatial_dic = T.df_to_spatial_dic(df_humid,w)
+                    vals_list = []
+                    for pix in spatial_dic:
+                        dic_i = spatial_dic[pix]
+                        if not var_ in dic_i:
+                            continue
+                        val = dic_i[var_]
+                        vals_list.append(val)
+                    vals_list = T.remove_np_nan(vals_list)
+                    x, y = Plot().plot_hist_smooth(vals_list, alpha=0, bins=80)
+                    plt.plot(x, y, color=gradient_color[w], label=str(w))
+                plt.title(f'{var_}_{period}_{humid}')
+                plt.tight_layout()
+                plt.savefig(join(outdir, f'{var_}_{period}_{humid}.pdf'))
+                # plt.legend()
+                # plt.savefig(join(outdir,f'legend.pdf'))
+                plt.close()
+
 def main():
     # Phenology().run()
     # Get_Monthly_Early_Peak_Late().run()
@@ -6269,16 +6385,17 @@ def main():
     # Dataframe().run()
     # RF().run()
     # Moving_window_RF().run()
-    # Analysis().run()
+    Analysis().run()
     # Moving_window().run()
     # Global_vars().get_valid_pix_df()
     # Drought_event().run()
     # Partial_corr().run()
     # Time_series().run()
-    Plot_Trend_Spatial().run()
+    # Plot_Trend_Spatial().run()
     # Sankey_plot().run()
     # Sankey_plot_max_contribution().run()
     # Sankey_plot_single_max_contribution().run()
+    # Moving_window_1().run()
 
     pass
 
