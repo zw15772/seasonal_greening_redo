@@ -309,15 +309,21 @@ class Phenology:
     def __init__(self):
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Phenology',
                                                                                        results_root_main_flow)
-        self.datadir=join(data_root,'LAI_3g')
+        # self.datadir=join(data_root,'LAI_3g')
+        # self.product = 'BU_MCD_LAI_CMG'
+        self.product = 'LAI3g'
+
+
+        self.datadir=join(data_root,self.product)
 
     def run(self):
 
-        # fdir = join(self.datadir,'LAI_TIFF_resample_0.5')
-        # outdir = join(self.datadir,'per_pix_annual')
-        # self.data_transform_annual(fdir,outdir)
+        fdir = join(self.datadir,'tif_05')
+        outdir = join(self.datadir,'per_pix_annual')
+        self.data_transform_annual(fdir,outdir)
+        # self.modify_first_year()
         # 3 hants smooth
-        self.hants()
+        # self.hants()
         # self.check_hants()
 
         # self.annual_phenology()
@@ -327,7 +333,7 @@ class Phenology:
         # self.all_year_hants_annual_mean()
         # self.all_year_hants()
         # self.longterm_mean_phenology()
-        self.check_lonterm_phenology()
+        # self.check_lonterm_phenology()
 
         pass
 
@@ -383,12 +389,12 @@ class Phenology:
                 continue
             vals = dic[pix]
             vals = np.array(vals)
+            vals = T.mask_999999_arr(vals,warning=False)
             if T.is_all_nan(vals):
                 continue
-            print(vals)
             vals = T.interp_nan(vals)
-            print(vals)
-            print('---')
+            if len(vals) == 1:
+                continue
             spatial_dic[pix] = 1
             xnew, ynew = self.__interp__(vals)
             std = np.nanstd(ynew)
@@ -400,18 +406,32 @@ class Phenology:
             if T.is_all_nan(result):
                 continue
             hants_dic[pix] = result
-        # T.save_npy(hants_dic,outf)
-        exit()
+        T.save_npy(hants_dic,outf)
+
+    def modify_first_year(self):
+        fdir = join(data_root,self.product,'per_pix_annual','2000')
+        for f in tqdm(T.listdir(fdir)):
+            dic = T.load_npy(join(fdir,f))
+            for pix in dic:
+                vals = dic[pix]
+                vals = np.array(vals)
+                if len(vals) == 20:
+                    for i in range(3):
+                        vals = np.insert(vals,0,-999999)
+                dic[pix] = vals
+            T.save_npy(dic,join(fdir,f))
+        pass
+
 
     def hants(self):
-        outdir = join(self.this_class_arr,'hants')
+        outdir = join(self.this_class_arr,f'hants_{self.product}')
         T.mkdir(outdir)
         fdir = join(self.datadir,'per_pix_annual')
         params = []
         for y in T.listdir(fdir):
             params.append([outdir, y, fdir])
-            self.kernel_hants([outdir, y, fdir])
-        # MULTIPROCESS(self.kernel_hants, params).run(process=4)
+            # self.kernel_hants([outdir, y, fdir])
+        MULTIPROCESS(self.kernel_hants, params).run(process=4)
 
     def check_hants(self):
         fdir = join(self.this_class_arr,'hants')
@@ -680,11 +700,11 @@ class Phenology:
         pass
 
 
-    def data_transform_annual(self,fdir,outdir):
+    def data_transform_annual(self,fdir,outdir,date_fmt='yyyymmdd'):
         T.mkdir(outdir)
         year_list = []
         for f in T.listdir(fdir):
-            y, m, d = Pre_Process().get_year_month_day(f)
+            y, m, d = Pre_Process().get_year_month_day(f,date_fmt=date_fmt)
             year_list.append(y)
         year_list = T.drop_repeat_val_from_list(year_list)
         # print(year_list)
@@ -694,7 +714,7 @@ class Phenology:
             T.mkdir(outdir_i)
             annual_f_list = []
             for f in T.listdir(fdir):
-                y, m, d = Pre_Process().get_year_month_day(f)
+                y, m, d = Pre_Process().get_year_month_day(f,date_fmt=date_fmt)
                 if y == year:
                     annual_f_list.append(f)
             Pre_Process().data_transform_with_date_list(fdir,outdir_i,annual_f_list)
@@ -702,7 +722,7 @@ class Phenology:
             print(year)
             # exit()
         # Pre_Process().monthly_compose()
-        exit()
+        # exit()
 
     def all_year_hants(self):
         fdir = join(self.this_class_arr,'hants')
@@ -6307,6 +6327,349 @@ class Sankey_plot_single_max_contribution:
 
         pass
 
+class Sankey_plot_PLS:
+
+    def __init__(self):
+        # self.Y_name = 'LAI3g'
+        self.Y_name = 'LAI4g'
+        # self.Y_name = 'MODIS-LAI'
+        self.var_list = ['CCI_SM', 'CO2', 'PAR', 'Temp', 'VPD']
+        self.period_list = ['early', 'peak', 'late']
+        self.fdir = f'/Volumes/NVME2T/greening_project_redo/data/Sankey_plot_data/PLS/{self.Y_name}'
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Sankey_plot_PLS',results_root_main_flow)
+        outdir = join(self.this_class_arr,f'{self.Y_name}')
+        T.mkdir(outdir)
+        self.dff = join(outdir,'dataframe.df')
+        # T.open_path_and_file(outdir)
+
+        pass
+
+    def run(self):
+        # self.plot_p_value_spatial()
+        # df,var_list = self.join_dataframe(self.fdir)
+        df = self.build_sankey_plot(df,var_list)
+        # #
+        df = self.__gen_df_init()
+        # df = Dataframe().add_Humid_nonhumid(df)
+        # T.save_df(df,self.dff)
+        # T.df_to_excel(df,self.dff)
+
+        self.plot_Sankey(df,True)
+        # self.plot_Sankey(df,False)
+        # self.plot_max_corr_spatial(df)
+        # self.max_contribution_bar()
+        pass
+
+    def __load_df(self):
+        dff = self.dff
+        df = T.load_df(dff)
+        return df,dff
+
+    def __gen_df_init(self):
+        if not os.path.isfile(self.dff):
+            df = pd.DataFrame()
+            T.save_df(df,self.dff)
+            return df
+        else:
+            df,dff = self.__load_df()
+            return df
+
+    def plot_max_corr_spatial(self,df):
+        outdir = join(self.this_class_tif,'plot_max_corr_spatial')
+        T.mkdir(outdir)
+        T.open_path_and_file(outdir)
+        period_list = self.period_list
+        var_list = self.var_list
+        var_color_dict = {'CCI_SM':'#ff7f0e','CO2':'#1f77b4','PAR':'#2ca02c','Temp':'#9467bd','VPD':'#d62728'}
+        var_value_dict = {'CCI_SM':0,'CO2':1,'PAR':2,'Temp':3,'VPD':4,'None':np.nan,'nan':np.nan}
+        color_list = []
+        for var_ in var_list:
+            color_list.append(var_color_dict[var_])
+        cmap = T.cmap_blend(color_list)
+        for period in period_list:
+            col_name = f'{period}_max_var'
+            spatial_dict = T.df_to_spatial_dic(df,col_name)
+            spatial_dict_value = {}
+            for pix in spatial_dict:
+                var_ = spatial_dict[pix]
+                var_ = str(var_)
+                var_ = var_.replace(period+'_','')
+                # print(var_)
+                value = var_value_dict[var_]
+                spatial_dict_value[pix] = value
+            arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_value)
+            arr = arr[:180]
+            # plt.figure()
+            # DIC_and_TIF().plot_back_ground_arr(global_land_tif,aspect='auto')
+            # plt.imshow(arr, cmap=cmap,aspect='auto')
+            # plt.colorbar()
+            # plt.title(f'{self.Y_name}_{period}')
+            # T.plot_colors_palette(cmap)
+            outf = join(outdir,f'{self.Y_name}_{period}.tif')
+            DIC_and_TIF().arr_to_tif(arr,outf)
+        # plt.show()
+
+    def join_dataframe(self,fdir):
+
+        df_list = []
+        var_list = []
+        for f in T.listdir(fdir):
+            # print(f)
+            period = f.split('.')[0].split('_')[-2]
+            dic = T.load_npy(join(fdir,f))
+            df_i = T.dic_to_df(dic,key_col_str='pix')
+            old_col_list = []
+            var_list = []
+            for col in df_i.columns:
+                if col == 'pix':
+                    continue
+                old_col_list.append(col)
+                var_list.append(col)
+            if '_p_value_' in f:
+                new_col_list = [f'{period}_{col}_p_value' for col in old_col_list]
+            else:
+                new_col_list = [f'{period}_{col}' for col in old_col_list]
+            for i in range(len(old_col_list)):
+                new_name = new_col_list[i]
+                old_name = old_col_list[i]
+                df_i = T.rename_dataframe_columns(df_i,old_name,new_name)
+            df_list.append(df_i)
+        df = pd.DataFrame()
+        df = Tools().join_df_list(df,df_list,'pix')
+        ## re-index dataframe
+        df = df.reset_index(drop=True)
+        return df,var_list
+
+
+    def build_sankey_plot(self,df,var_list,p_threshold=0.1):
+
+        period_list = ['early','peak','late']
+        for period in period_list:
+            var_name_list = []
+            for var_ in var_list:
+                var_name_corr = f'{period}_{var_}'
+                var_name_list.append(var_name_corr)
+            for i,row in tqdm(df.iterrows(),total=len(df)):
+                value_dict = {}
+                for var_ in var_name_list:
+                    value = row[var_]
+                    value = abs(value)
+                    value_dict[var_] = value
+                max_key = T.get_max_key_from_dict(value_dict)
+                df.loc[i,f'{period}_max_var'] = max_key
+        T.save_df(df, self.dff)
+        T.df_to_excel(df, self.dff)
+
+
+    def __get_var_list(self,fdir):
+        var_list = []
+        for f in T.listdir(fdir):
+            period = f.split('.')[0].split('_')[-2]
+            dic = T.load_npy(join(fdir, f))
+            df_i = T.dic_to_df(dic, key_col_str='pix')
+            var_list = []
+            for col in df_i.columns:
+                if col == 'pix':
+                    continue
+                var_list.append(col)
+            break
+        return var_list
+
+    def __add_alpha_to_color(self,hexcolor,alpha=0.8):
+        rgb = T.hex_color_to_rgb(hexcolor)
+        rgb = list(rgb)
+        rgb[-1] = alpha
+        rgb = tuple(rgb)
+        rgb_str = 'rgba'+str(rgb)
+        return rgb_str
+
+    def plot_Sankey(self,df,ishumid):
+        if ishumid:
+            df = df[df['HI_reclass'] == 'Humid']
+            outdir = join(self.this_class_png, f'{self.Y_name}/Humid')
+            title = 'Humid'
+        else:
+            df = df[df['HI_reclass'] == 'Dryland']
+            outdir = join(self.this_class_png, f'{self.Y_name}/Dryland')
+            title = 'Dryland'
+        T.mkdir(outdir,force=True)
+        # T.open_path_and_file(outdir)
+        var_list = self.__get_var_list(self.fdir)
+
+        period_list = ['early','peak','late']
+        # period_list = ['late']
+        early_max_var_list = [f'early_{var}' for var in var_list]
+        peak_max_var_list = [f'peak_{var}' for var in var_list]
+        late_max_var_list = [f'late_{var}' for var in var_list]
+
+        node_list = early_max_var_list+peak_max_var_list+late_max_var_list
+        position_dict = dict(zip(node_list, range(len(node_list))))
+
+        color_dict = {'CO2': self.__add_alpha_to_color('#00FF00'),
+                      'CCI_SM': self.__add_alpha_to_color('#00E7FF'),
+                      'PAR': self.__add_alpha_to_color('#FFFF00'),
+                      'Temp': self.__add_alpha_to_color('#FF0000'),
+                      'VPD': self.__add_alpha_to_color('#B531AF'),
+                      }
+        node_color_list = [color_dict[var_] for var_ in var_list]
+        node_color_list = node_color_list * 3
+        # print(node_color_list)
+        # exit()
+        early_max_var_col = 'early_max_var'
+        peak_max_var_col = 'peak_max_var'
+        late_max_var_col = 'late_max_var'
+
+        source = []
+        target = []
+        value = []
+        # color_list = []
+        # node_list_anomaly_value_mean = []
+        # anomaly_value_list = []
+        node_list_with_ratio = []
+        node_name_list = []
+        for early_status in early_max_var_list:
+            # print(early_status)
+            # exit()
+            df_early = df[df[early_max_var_col] == early_status]
+            vals = df_early[early_status].tolist()
+            vals_mean = np.nanmean(vals)
+            ratio = len(df_early)/len(df)
+            node_list_with_ratio.append(ratio)
+            node_name_list.append(f'{early_status} {vals_mean:.2f}')
+        for peak_status in peak_max_var_list:
+            df_peak = df[df[peak_max_var_col] == peak_status]
+            vals = df_peak[peak_status].tolist()
+            vals_mean = np.nanmean(vals)
+            ratio = len(df_peak)/len(df)
+            node_list_with_ratio.append(ratio)
+            node_name_list.append(f'{peak_status} {vals_mean:.2f}')
+        for late_status in late_max_var_list:
+            df_late = df[df[late_max_var_col] == late_status]
+            vals = df_late[late_status].tolist()
+            vals_mean = np.nanmean(vals)
+            ratio = len(df_late)/len(df)
+            node_list_with_ratio.append(ratio)
+            node_name_list.append(f'{late_status} {vals_mean:.2f}')
+        node_list_with_ratio = [round(i,3) for i in node_list_with_ratio]
+
+        for early_status in early_max_var_list:
+            df_early = df[df[early_max_var_col] == early_status]
+            early_count = len(df_early)
+            for peak_status in peak_max_var_list:
+                df_peak = df_early[df_early[peak_max_var_col] == peak_status]
+                peak_count = len(df_peak)
+                source.append(position_dict[early_status])
+                target.append(position_dict[peak_status])
+                value.append(peak_count)
+                for late_status in late_max_var_list:
+                    df_late = df_peak[df_peak[late_max_var_col] == late_status]
+                    late_count = len(df_late)
+                    source.append(position_dict[peak_status])
+                    target.append(position_dict[late_status])
+                    value.append(late_count)
+        link = dict(source=source, target=target, value=value,)
+        # node = dict(label=node_list_with_ratio, pad=100,
+        node = dict(label=node_name_list, pad=100,
+                    thickness=15,
+                    line=dict(color="black", width=0.5),
+                    # x=node_x,
+                    # y=node_y,
+                    color=node_color_list
+                )
+        data = go.Sankey(link=link, node=node, arrangement='snap', textfont=dict(color="rgba(0,0,0,1)", size=18))
+        fig = go.Figure(data)
+        fig.update_layout(title_text=f'{title}')
+        fig.write_html(join(outdir, f'{title}.html'))
+        # fig.write_image(join(outdir, f'{title}.png'))
+        # fig.show()
+
+
+    def plot_p_value_spatial(self):
+        fdir = self.fdir
+        var_ = 'Temp'
+        # var_ = 'CCI_SM'
+        period = 'early'
+        f = join(fdir, '2000-2018_partial_correlation_p_value_early_LAI3g.npy')
+        dict_ = T.load_npy(f)
+        spatial_dict = {}
+        for pix in tqdm(dict_):
+            dict_i = dict_[pix]
+            if not var_ in dict_i:
+                continue
+            value = dict_i[var_]
+            spatial_dict[pix] = value
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        arr = arr[:180]
+        arr[arr>0.1] = 1
+        plt.imshow(arr, cmap='jet',aspect='auto')
+        plt.colorbar()
+        DIC_and_TIF().plot_back_ground_arr_north_sphere(global_land_tif,aspect='auto')
+        plt.title(f'{var_}_{period}')
+        plt.show()
+
+        pass
+
+    def max_contribution_bar(self):
+        fdir = '/Volumes/NVME2T/greening_project_redo/results/Main_flow_1/tif/Sankey_plot_max_contribution/plot_max_corr_spatial'
+        outdir = join(self.this_class_png, 'max_contribution_bar')
+        T.mkdir(outdir)
+        T.open_path_and_file(outdir)
+        var_value_dict = {'CCI_SM': 0, 'CO2': 1, 'PAR': 2, 'Temp': 3, 'VPD': 4}
+        color_dict = {'CCI_SM': '#00E7FF', 'CO2': '#00FF00', 'PAR': '#FFFF00', 'Temp': '#FF0000', 'VPD': '#B531AF'}
+        var_value_dict_reverse = T.reverse_dic(var_value_dict)
+        all_dict = {}
+        product_list = []
+        period_list = []
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            print(f)
+            fname = f.split('.')[0]
+            product,period = fname.split('_')
+            product_list.append(product)
+            period_list.append(period)
+            arr = ToRaster().raster2array(join(fdir, f))[0]
+            arr = T.mask_999999_arr(arr,warning=False)
+            dic = DIC_and_TIF().spatial_arr_to_dic(arr)
+            key = f'{product}_{period}'
+            all_dict[key] = dic
+        df = T.spatial_dics_to_df(all_dict)
+        df = Dataframe().add_Humid_nonhumid(df)
+        humid_var = 'HI_reclass'
+        humid_list = T.get_df_unique_val_list(df, humid_var)
+        for humid in humid_list:
+            df_humid = df[df[humid_var] == humid]
+            fig,axs = plt.subplots(3,3,figsize=(10,10))
+            product_list = list(set(product_list))
+            period_list = ['early','peak','late']
+            for m,product in enumerate(product_list):
+                for n,period in enumerate(period_list):
+                    col = f'{product}_{period}'
+                    df_i = df_humid[col]
+                    df_i = df_i.dropna()
+                    unique_value = T.get_df_unique_val_list(df_humid,col)
+                    x_list = []
+                    y_list = []
+                    color_list = []
+                    for val in unique_value:
+                        df_i_i = df_i[df_i == val]
+                        ratio = len(df_i_i)/len(df_i) * 100
+                        x = var_value_dict_reverse[int(val)][0]
+                        x_list.append(x)
+                        y_list.append(ratio)
+                        color_list.append(color_dict[x])
+                    # plt.figure()
+                    # print(m,n)
+                    axs[m][n].bar(x_list,y_list,color=color_list)
+                    axs[m][n].set_title(f'{product}_{period}')
+                    axs[m][n].set_ylim(0,47)
+            plt.suptitle(f'{humid}')
+            plt.tight_layout()
+            outf = join(outdir, f'{humid}.pdf')
+            plt.savefig(outf)
+            plt.close()
+
+        pass
 
 class Moving_window_1:
 
@@ -6385,7 +6748,7 @@ def main():
     # Dataframe().run()
     # RF().run()
     # Moving_window_RF().run()
-    Analysis().run()
+    # Analysis().run()
     # Moving_window().run()
     # Global_vars().get_valid_pix_df()
     # Drought_event().run()
@@ -6395,6 +6758,7 @@ def main():
     # Sankey_plot().run()
     # Sankey_plot_max_contribution().run()
     # Sankey_plot_single_max_contribution().run()
+    Sankey_plot_PLS().run()
     # Moving_window_1().run()
 
     pass
