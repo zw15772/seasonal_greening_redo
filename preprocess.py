@@ -2,7 +2,7 @@
 import zipfile
 
 from __init__ import *
-import ee
+
 global_land_tif = join(this_root,'conf/land.tif')
 global_start_year = 1982
 # global_end_year = 2018

@@ -1,11 +1,12 @@
 # coding=utf-8
-import cytoolz.curried
+
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 import Main_flow
 from preprocess import *
-results_root_main_flow = join(results_root,'Main_flow_1')
+from __init__ import *
+results_root_main_flow = join(results_root, 'Main_flow')
 global_n = 15
 
 class Global_vars:
@@ -309,25 +310,31 @@ class Phenology:
     def __init__(self):
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Phenology',
                                                                                        results_root_main_flow)
-        # self.datadir=join(data_root,'LAI_3g')
-        # self.product = 'BU_MCD_LAI_CMG'
+
         self.product = 'LAI3g'
+        # self.product = 'MODIS_LAI'
 
 
         self.datadir=join(data_root,self.product)
+        self.resultdir = join(results_root, self.product)
+        # Tools().open_path_and_file(self.this_class_arr)
 
     def run(self):
 
-        fdir = join(self.datadir,'tif_05')
-        outdir = join(self.datadir,'per_pix_annual')
-        self.data_transform_annual(fdir,outdir)
+        # fdir = join(data_root,'tif_05')
+        # outdir = join(self.datadir,'per_pix_annual')
+        # self.data_transform_annual(fdir,outdir)
         # self.modify_first_year()
         # 3 hants smooth
         # self.hants()
         # self.check_hants()
 
-        # self.annual_phenology()
-        # self.compose_annual_phenology()
+        # self.annual_phenology(self.product)
+        # self.compose_annual_phenology(self.product)
+        self.phenology_merge(self.product)
+        # self.data_clean(self.product)
+        # self.average_phenology(self.product)
+        # self.check_SOS_EOS(self.product)
         # self.check_compose_hants()
         # self.all_year_hants_annual()
         # self.all_year_hants_annual_mean()
@@ -619,10 +626,10 @@ class Phenology:
         pass
 
 
-    def annual_phenology(self,threshold_i=0.2):
-        out_dir = join(self.this_class_arr, 'annual_phenology')
-        T.mkdir(out_dir)
-        hants_smooth_dir = join(self.this_class_arr, 'hants')
+    def annual_phenology(self,product,threshold_i=0.2):
+        out_dir = join(self.this_class_arr, 'annual_phenology',product)
+        T.mkdir(out_dir,force=True)
+        hants_smooth_dir = join(self.this_class_arr, 'hants',product)
         for f in T.listdir(hants_smooth_dir):
             year = int(f.split('.')[0])
             outf_i = join(out_dir,f'{year}.df')
@@ -636,12 +643,12 @@ class Phenology:
             df = T.dic_to_df(result_dic,'pix')
             T.save_df(df,outf_i)
             T.df_to_excel(df,outf_i)
-            # np.save(outf_i,result_dic)
+            np.save(outf_i,result_dic)
 
-    def compose_annual_phenology(self):
-        f_dir = join(self.this_class_arr, 'annual_phenology')
-        outdir = join(self.this_class_arr,'compose_annual_phenology')
-        T.mkdir(outdir)
+    def compose_annual_phenology(self,product):
+        f_dir = join(self.this_class_arr, 'annual_phenology',product)
+        outdir = join(self.this_class_arr,'compose_annual_phenology',product)
+        T.mkdir(outdir,force=True)
         outf = join(outdir,'phenology_dataframe.df')
         all_result_dic = {}
         pix_list_all = []
@@ -682,22 +689,184 @@ class Phenology:
         df_all = T.dic_to_df(all_result_dic,'pix')
         T.save_df(df_all,outf)
         T.df_to_excel(df_all,outf)
+        np.save(outf,all_result_dic)
+
+    def data_clean(self,product):  # 盖帽法
+
+        f_dir = join(self.this_class_arr, 'compose_annual_phenology', product)
+        outdir = join(self.this_class_arr, 'compose_annual_phenology_clean', product)
+        T.mkdir(outdir, force=True)
+        outf = join(outdir, 'phenology_dataframe.df')
+        all_result_dic = {}
+        pix_list_all = []
+
+        for f in T.listdir(f_dir):
+            if not f.endswith('.df'):
+                continue
+            df = T.load_df(join(f_dir, f))
+            columns=df.columns
+            column_list=[]
+            for col in columns:
+                if col=='pix':
+                    continue
+                column_list.append(col)
+            for i, row in df.iterrows():
+                pix = row['pix']
+                lon,lat=DIC_and_TIF().pix_to_lon_lat(pix)
+                if lat>50:
+                    continue
+                address=Tools().lonlat_to_address(lon,lat)
+                print(address)
+                for col in column_list:
+                    dic_i=row[col]
+                    print(dic_i)
+                    # values_list=dic_i.values()
+                    # values_list=list(values_list)
+                    series=pd.Series(dic_i)
+                    cap_series=self.cap(series)
+                    print(series)
+
+
+                    series.hist(bins=50)
+
+
+                    plt.figure()
+
+                    print(cap_series)
+                    plt.plot(series)
+                    plt.title(address)
+                    plt.plot(cap_series)
+                    plt.show()
+
+    def average_phenology(self,product):
+
+        f_dir = join(self.this_class_arr, 'compose_annual_phenology', product)
+        outdir = join(self.this_class_arr, 'compose_annual_phenology_average', product)
+        T.mkdir(outdir, force=True)
+        outf = join(outdir, 'phenology_dataframe.df')
+        all_result_dic = {}
+
+
+        for f in T.listdir(f_dir):
+            if not f.endswith('.df'):
+                continue
+            df = T.load_df(join(f_dir, f))
+            columns=df.columns
+            column_list=[]
+            for col in columns:
+                if col=='pix':
+                    continue
+                column_list.append(col)
+
+            pix_list = T.get_df_unique_val_list(df, 'pix')
+
+########################################build dic##############################################################
+            for pix in pix_list:
+                dic_i = {}
+                for col in column_list:
+                    dic_i[col] = {}
+                all_result_dic[pix] = dic_i
+
+            for i, row in tqdm(df.iterrows(),total=len(df)):
+                pix = row['pix']
+                lon,lat=DIC_and_TIF().pix_to_lon_lat(pix)
+                # address=Tools().lonlat_to_address(lon,lat)
+                # print(address)
+                for col in column_list:
+                    dic_i=row[col]
+                    # print(dic_i)
+                    values=dic_i.values()
+                    values=list(values)
+                    value_mean=np.mean(values)
+                    value_=round(value_mean,0)
+                    value_std=np.std(values)
+                    all_result_dic[pix][col] = value_
+
+        df_all = T.dic_to_df(all_result_dic, 'pix')
+        T.save_df(df_all, outf)
+        T.df_to_excel(df_all, outf)
+        np.save(outf, all_result_dic)
 
 
 
-    def check_SOS_EOS(self,threshold_i=0.5):
-        fdir = self.this_class_arr + 'SOS_EOS/threshold_{}/north/'.format(threshold_i)
+    def cap(self,x, quantile=(0.05, 0.95)):
+
+        """盖帽法处理异常值
+        Args：
+            x：pd.Series列，连续变量
+            quantile：指定盖帽法的上下分位数范围
+        """
+
+        # 生成分位数
+        Q01, Q99 = x.quantile(quantile).values.tolist()
+
+        # 替换异常值为指定的分位数
+        if Q01 > x.min():
+            x = x.copy()
+            x.loc[x < Q01] = Q01
+
+        if Q99 < x.max():
+            x = x.copy()
+            x.loc[x > Q99] = Q99
+
+        return (x)
+
+    def check_SOS_EOS(self,product):
+        fdir = join(self.this_class_arr, 'compose_annual_phenology_average', product+'/')
         for f in T.listdir(fdir):
+            if not f.endswith('.npy'):
+                continue
             dic = T.load_npy(fdir+f)
             spatial_dic = {}
             for pix in dic:
-                SOS = dic[pix][0]
-                pix = (int(pix.split('.')[0]),int(pix.split('.')[1]))
+                SOS = dic[pix]['early_start']
                 spatial_dic[pix] = SOS
             arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
-            plt.imshow(arr)
+            # plt.imshow(arr,vmin=180,vmax=350,cmap='jet')
+            plt.imshow(arr, vmin=40, vmax=180, cmap='jet')
+            plt.colorbar()
             plt.show()
         pass
+
+    def phenology_merge(self,product):  # 转换格式 for example: early [100,150], peak [150,200], late [200,300]
+
+        variable_list=['MODIS_LAI'] #  240 20yr
+        # variable_list = ['LAI4g'] #长度39 468
+        # product = 'LAI3g'  # 长度37 444
+
+        phenology_df = T.load_df(
+            results_root + f'Main_flow/arr/Phenology/compose_annual_phenology_average/{product}/phenology_dataframe_{product}.df')
+
+        outf= results_root + f'Main_flow/arr/Phenology/compose_annual_phenology_average/{product}/phenology_dataframe_{product}_merge.df'
+        early_dic = {}
+        peak_dic = {}
+        late_dic = {}
+        all_result_dic={}
+
+        for i, row in tqdm(phenology_df.iterrows(),total=len(phenology_df)):
+            pix = row['pix']
+            all_result_dic[pix] = {}
+            early_start=row['early_start']
+            early_end = row['early_end']
+            peak_start = row['early_end']
+            peak_end = row['late_start']
+            late_start = row['late_start']
+            late_end = row['late_end']
+            early_period= np.arange(int(early_start),int(early_end),1)
+            # print(early_period)
+            peak_period = np.arange(int(early_end),int(late_start),1)
+            # print(peak_period)
+            late_period = np.arange(int(late_start),int(late_end),1)
+            # print(late_period)
+            all_result_dic[pix]['early']=early_period
+            all_result_dic [pix]['peak'] = peak_period
+            all_result_dic [pix]['late'] = late_period
+
+            df_all = T.dic_to_df(all_result_dic, 'pix')
+            T.save_df(df_all, outf)
+            T.df_to_excel(df_all, outf)
+            np.save(outf, all_result_dic)
+
 
 
     def data_transform_annual(self,fdir,outdir,date_fmt='yyyymmdd'):
@@ -6742,7 +6911,7 @@ class Moving_window_1:
                 plt.close()
 
 def main():
-    # Phenology().run()
+    Phenology().run()
     # Get_Monthly_Early_Peak_Late().run()
     # Pick_Early_Peak_Late_value().run()
     # Dataframe().run()
@@ -6758,7 +6927,7 @@ def main():
     # Sankey_plot().run()
     # Sankey_plot_max_contribution().run()
     # Sankey_plot_single_max_contribution().run()
-    Sankey_plot_PLS().run()
+    # Sankey_plot_PLS().run()
     # Moving_window_1().run()
 
     pass
