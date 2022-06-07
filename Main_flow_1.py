@@ -326,7 +326,7 @@ class Phenology:
         # self.data_transform_annual(fdir,outdir)
         # self.modify_first_year()
         # 3 hants smooth
-        # self.hants()
+        self.hants()
         # self.check_hants()
 
         # self.annual_phenology(self.product)
@@ -1068,7 +1068,8 @@ class Get_Monthly_Early_Peak_Late:
 
     def __init__(self):
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Get_Monthly_Early_Peak_Late',results_root_main_flow)
-
+        self.sos_f = '/Volumes/NVME2T/greening_project_redo/data/Phenology/transform_early_peak_late_dormant_period_annual/early_start_mon.npy'
+        self.eos_f = '/Volumes/NVME2T/greening_project_redo/data/Phenology/transform_early_peak_late_dormant_period_annual/late_end_mon.npy'
     def run(self):
         self.Monthly_Early_Peak_Late()
         # self.check_pix()
@@ -1077,14 +1078,25 @@ class Get_Monthly_Early_Peak_Late:
 
     def Monthly_Early_Peak_Late(self):
         outf = join(self.this_class_arr,'Monthly_Early_Peak_Late.df')
-        vege_dir = vars_info_dic['LAI_3g']['path']
-        vege_dic = T.load_npy_dir(vege_dir)
+        sos_dict = T.load_npy(self.sos_f)
+        eos_dict = T.load_npy(self.eos_f)
+        vege_dir = '/Volumes/NVME2T/greening_project_redo/data/BU_MCD_LAI_CMG/resample_bill_05_monthly_max_compose_per_pix'
+        vege_dic = T.load_npy_dir(vege_dir,condition='005')
         result_dic = {}
         for pix in tqdm(vege_dic):
             vals = vege_dic[pix]
             if T.is_all_nan(vals):
                 continue
+            sos_list = sos_dict[pix]
+            eos_list = eos_dict[pix]
+            if len(sos_list) == 0:
+                continue
+            sos_mean = float(np.mean(sos_list))
+            eos_mean = float(np.mean(eos_list))
+            sos_mean = int(round(sos_mean,0))
+            eos_mean = int(round(eos_mean,0))
             vals = np.array(vals)
+            vals = T.mask_999999_arr(vals,warning=False)
             val_reshape = vals.reshape((-1,12))
             val_reshape_T = val_reshape.T
             month_mean_list = []
@@ -1105,8 +1117,12 @@ class Get_Monthly_Early_Peak_Late:
             if max_n_index[1]>=10:
                 continue
             peak_mon = np.array(max_n_index) + 1
-            early_mon = list(range(4,peak_mon[0]))
-            late_mon = list(range(peak_mon[-1]+1,11))
+            if sos_mean > peak_mon[0]:
+                continue
+            if peak_mon[-1]+1 > eos_mean+1:
+                continue
+            early_mon = list(range(sos_mean,peak_mon[0]))
+            late_mon = list(range(peak_mon[-1]+1,eos_mean+1))
             # print(early_mon)
 
             if peak_months_distance >= 2:
@@ -1123,12 +1139,12 @@ class Get_Monthly_Early_Peak_Late:
             early_mon = np.array(early_mon)
             peak_mon = np.array(peak_mon)
             late_mon = np.array(late_mon)
-            print(month_mean_list)
-            print(early_mon)
-            print(peak_mon)
-            print(late_mon)
-            plt.plot(month_mean_list)
-            plt.show()
+            # print(month_mean_list)
+            # print(early_mon)
+            # print(peak_mon)
+            # print(late_mon)
+            # plt.plot(month_mean_list)
+            # plt.show()
             # exit()
             result_dic_i = {
                 'early':early_mon,
@@ -3447,7 +3463,7 @@ class Dataframe:
         df = self.__gen_df_init()
         # df = self.add_data(df)
         # df = self.add_lon_lat_to_df(df)
-        # df = self.add_Humid_nonhumid(df)
+        df = self.add_Humid_nonhumid(df)
         # df = self.combine_season(df)
         T.save_df(df, self.dff)
         T.df_to_excel(df, self.dff, random=False)
@@ -6955,8 +6971,8 @@ class Moving_window_1:
                 plt.close()
 
 def main():
-    Phenology().run()
-    # Get_Monthly_Early_Peak_Late().run()
+    # Phenology().run()
+    Get_Monthly_Early_Peak_Late().run()
     # Pick_Early_Peak_Late_value().run()
     # Dataframe().run()
     # RF().run()
