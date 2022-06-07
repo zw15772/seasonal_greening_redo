@@ -331,7 +331,8 @@ class Phenology:
 
         # self.annual_phenology(self.product)
         # self.compose_annual_phenology(self.product)
-        self.phenology_merge(self.product)
+        # self.pick_daily_phenology()
+        self.pick_month_phenology()
         # self.data_clean(self.product)
         # self.average_phenology(self.product)
         # self.check_SOS_EOS(self.product)
@@ -828,16 +829,18 @@ class Phenology:
             plt.show()
         pass
 
-    def phenology_merge(self,product):  # 转换格式 for example: early [100,150], peak [150,200], late [200,300]
+    def pick_daily_phenology(self):  # 转换格式 for example: early [100,150], peak [150,200], late [200,300]
 
-        variable_list=['MODIS_LAI'] #  240 20yr
+        # product='MODIS_LAI' #  240 20yr
         # variable_list = ['LAI4g'] #长度39 468
-        # product = 'LAI3g'  # 长度37 444
+        product = 'LAI3g'  # 长度37 444
 
         phenology_df = T.load_df(
             results_root + f'Main_flow/arr/Phenology/compose_annual_phenology_average/{product}/phenology_dataframe_{product}.df')
 
-        outf= results_root + f'Main_flow/arr/Phenology/compose_annual_phenology_average/{product}/phenology_dataframe_{product}_merge.df'
+        outdir = results_root + f'Main_flow/arr/Phenology/pick_daily_phenology/{product}/'
+        T.mkdir(outdir, force=True)
+        outf= results_root + f'Main_flow/arr/Phenology/pick_daily_phenology/{product}/pick_daily.df'
         early_dic = {}
         peak_dic = {}
         late_dic = {}
@@ -862,10 +865,51 @@ class Phenology:
             all_result_dic [pix]['peak'] = peak_period
             all_result_dic [pix]['late'] = late_period
 
-            df_all = T.dic_to_df(all_result_dic, 'pix')
-            T.save_df(df_all, outf)
-            T.df_to_excel(df_all, outf)
-            np.save(outf, all_result_dic)
+        df_all = T.dic_to_df(all_result_dic, 'pix')
+        T.save_df(df_all, outf)
+        T.df_to_excel(df_all, outf)
+        np.save(outf, all_result_dic)
+        
+    def pick_month_phenology(self):  # 转换格式 for example: early [100,150], peak [150,200], late [200,300]
+
+        # product='MODIS_LAI' #  240 20yr
+        # variable_list = ['LAI4g'] #长度39 468
+        product = 'LAI3g'  # 长度37 444
+
+        phenology_df = T.load_df(
+            results_root + f'Main_flow/arr/Phenology/compose_annual_phenology_average/{product}/phenology_dataframe_{product}.df')
+
+        outdir = results_root + f'Main_flow/arr/Phenology/pick_monthly_phenology/{product}/'
+        T.mkdir(outdir, force=True)
+        outf= results_root + f'Main_flow/arr/Phenology/pick_monthly_phenology/{product}/pick_daily.df'
+        early_dic = {}
+        peak_dic = {}
+        late_dic = {}
+        all_result_dic={}
+
+        for i, row in tqdm(phenology_df.iterrows(),total=len(phenology_df)):
+            pix = row['pix']
+            all_result_dic[pix] = {}
+            early_start=row['early_start_mon']
+            early_end = row['early_end_mon']
+            peak_start = row['early_end_mon']
+            peak_end = row['late_start_mon']
+            late_start = row['late_start_mon']
+            late_end = row['late_end_mon']
+            early_period= np.arange(int(early_start),int(early_end),1)
+            # print(early_period)
+            peak_period = np.arange(int(early_end),int(late_start),1)
+            # print(peak_period)
+            late_period = np.arange(int(late_start),int(late_end),1)
+            # print(late_period)
+            all_result_dic[pix]['early']=early_period
+            all_result_dic [pix]['peak'] = peak_period
+            all_result_dic [pix]['late'] = late_period
+
+        df_all = T.dic_to_df(all_result_dic, 'pix')
+        T.save_df(df_all, outf)
+        T.df_to_excel(df_all, outf)
+        np.save(outf, all_result_dic)
 
 
 
@@ -1056,7 +1100,7 @@ class Get_Monthly_Early_Peak_Late:
 
             max_n_index = list(max_n_index)
             max_n_index.sort()
-            if max_n_index[0]<=3:
+            if max_n_index[0]<3:
                 continue
             if max_n_index[1]>=10:
                 continue
