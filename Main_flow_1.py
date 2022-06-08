@@ -326,17 +326,18 @@ class Phenology:
         # self.data_transform_annual(fdir,outdir)
         # self.modify_first_year()
         # 3 hants smooth
-        self.hants()
+        # self.hants()
         # self.check_hants()
 
         # self.annual_phenology(self.product)
         # self.compose_annual_phenology(self.product)
         # self.pick_daily_phenology()
-        self.pick_month_phenology()
+        # self.pick_month_phenology()
         # self.data_clean(self.product)
         # self.average_phenology(self.product)
         # self.check_SOS_EOS(self.product)
         # self.check_compose_hants()
+        self.check_pixel_phenology(self.product)
         # self.all_year_hants_annual()
         # self.all_year_hants_annual_mean()
         # self.all_year_hants()
@@ -742,7 +743,7 @@ class Phenology:
     def average_phenology(self,product):
 
         f_dir = join(self.this_class_arr, 'compose_annual_phenology', product)
-        outdir = join(self.this_class_arr, 'compose_annual_phenology_average', product)
+        outdir = join(self.this_class_arr, 'average_phenology', product)
         T.mkdir(outdir, force=True)
         outf = join(outdir, 'phenology_dataframe.df')
         all_result_dic = {}
@@ -812,19 +813,46 @@ class Phenology:
 
         return (x)
 
-    def check_SOS_EOS(self,product):
-        fdir = join(self.this_class_arr, 'compose_annual_phenology_average', product+'/')
+    def check_pixel_phenology(self,product):
+        fdir = join(self.this_class_arr, 'Get_Monthly_Early_Peak_Late', product+'/')
+        # fdir='/Volumes/SSD_sumsang/project_greening/Result/new_result/Main_flow/arr/Phenology/average_phenology/MODIS_LAI/'
         for f in T.listdir(fdir):
             if not f.endswith('.npy'):
                 continue
             dic = T.load_npy(fdir+f)
             spatial_dic = {}
             for pix in dic:
-                SOS = dic[pix]['early_start']
+
+                SOS = dic[pix]['late']
+                if len(SOS)==0:
+                    continue
+                SOS=SOS[0]
                 spatial_dic[pix] = SOS
             arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
             # plt.imshow(arr,vmin=180,vmax=350,cmap='jet')
-            plt.imshow(arr, vmin=40, vmax=180, cmap='jet')
+            plt.imshow(arr, vmin=6, vmax=11, cmap='jet')
+            plt.colorbar()
+            plt.show()
+        pass
+
+    def check_SOS_EOS(self,product):
+        fdir = join(self.this_class_arr, 'Get_Monthly_Early_Peak_Late', product+'/')
+        # fdir='/Volumes/SSD_sumsang/project_greening/Result/new_result/Main_flow/arr/Phenology/average_phenology/MODIS_LAI/'
+        for f in T.listdir(fdir):
+            if not f.endswith('.npy'):
+                continue
+            dic = T.load_npy(fdir+f)
+            spatial_dic = {}
+            for pix in dic:
+
+                SOS = dic[pix]['late']
+                if len(SOS)==0:
+                    continue
+                SOS=SOS[0]
+                spatial_dic[pix] = SOS
+            arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
+            # plt.imshow(arr,vmin=180,vmax=350,cmap='jet')
+            plt.imshow(arr, vmin=6, vmax=11, cmap='jet')
             plt.colorbar()
             plt.show()
         pass
@@ -1068,33 +1096,37 @@ class Get_Monthly_Early_Peak_Late:
 
     def __init__(self):
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Get_Monthly_Early_Peak_Late',results_root_main_flow)
-        self.sos_f = '/Volumes/NVME2T/greening_project_redo/data/Phenology/transform_early_peak_late_dormant_period_annual/early_start_mon.npy'
-        self.eos_f = '/Volumes/NVME2T/greening_project_redo/data/Phenology/transform_early_peak_late_dormant_period_annual/late_end_mon.npy'
+
     def run(self):
-        self.Monthly_Early_Peak_Late()
-        # self.check_pix()
+        # self.Monthly_Early_Peak_Late()
+        self.check_pix()
         pass
 
 
     def Monthly_Early_Peak_Late(self):
+
         outf = join(self.this_class_arr,'Monthly_Early_Peak_Late.df')
-        sos_dict = T.load_npy(self.sos_f)
-        eos_dict = T.load_npy(self.eos_f)
-        vege_dir = '/Volumes/NVME2T/greening_project_redo/data/BU_MCD_LAI_CMG/resample_bill_05_monthly_max_compose_per_pix'
-        vege_dic = T.load_npy_dir(vege_dir,condition='005')
+
+        product='MODIS_LAI'
+        phenology_df = T.load_df(
+            results_root + f'Main_flow/arr/Phenology/compose_annual_phenology_average/{product}/phenology_dataframe_{product}.df')
+        phenology_df=phenology_df.dropna()
+
+
+        sos_dict = T.df_to_spatial_dic(phenology_df,'early_start_mon')
+        eos_dict = T.df_to_spatial_dic(phenology_df,'late_end_mon')
+        vege_dir = f'/Volumes/SSD_sumsang/project_greening/Data/original_dataset/{product}_dic/'  # monthly
+        vege_dic = T.load_npy_dir(vege_dir)
         result_dic = {}
         for pix in tqdm(vege_dic):
+            if pix not in sos_dict:
+                continue
             vals = vege_dic[pix]
             if T.is_all_nan(vals):
                 continue
-            sos_list = sos_dict[pix]
-            eos_list = eos_dict[pix]
-            if len(sos_list) == 0:
-                continue
-            sos_mean = float(np.mean(sos_list))
-            eos_mean = float(np.mean(eos_list))
-            sos_mean = int(round(sos_mean,0))
-            eos_mean = int(round(eos_mean,0))
+            sos = int(sos_dict[pix])
+            eos = int(eos_dict[pix])
+
             vals = np.array(vals)
             vals = T.mask_999999_arr(vals,warning=False)
             val_reshape = vals.reshape((-1,12))
@@ -1107,8 +1139,7 @@ class Get_Monthly_Early_Peak_Late:
 
             max_n_index,max_n_val = T.pick_max_n_index(month_mean_list,n=2)
             peak_months_distance = abs(max_n_index[0]-max_n_index[1])
-            # if peak_months_distance >= 3:
-            #     continue
+
 
             max_n_index = list(max_n_index)
             max_n_index.sort()
@@ -1117,18 +1148,18 @@ class Get_Monthly_Early_Peak_Late:
             if max_n_index[1]>=10:
                 continue
             peak_mon = np.array(max_n_index) + 1
-            if sos_mean > peak_mon[0]:
+            if sos > peak_mon[0]:
                 continue
-            if peak_mon[-1]+1 > eos_mean+1:
+            if peak_mon[-1]+1 > eos+1:
                 continue
-            early_mon = list(range(sos_mean,peak_mon[0]))
-            late_mon = list(range(peak_mon[-1]+1,eos_mean+1))
+            early_mon = list(range(sos,peak_mon[0]))
+            late_mon = list(range(peak_mon[-1]+1,eos+1))
             # print(early_mon)
 
             if peak_months_distance >= 2:
-                early_mon = list(range(4, peak_mon[0]))
+                early_mon = list(range(sos, peak_mon[0]))
                 peak_mon = list(range(peak_mon[0],peak_mon[1]+1))
-                late_mon = list(range(peak_mon[-1] + 1, 11))
+                late_mon = list(range(peak_mon[-1] + 1, eos+1))
                 # print(peak_months_distance)
                 # print(early_mon)
                 # print(peak_mon)
@@ -1156,20 +1187,108 @@ class Get_Monthly_Early_Peak_Late:
         # df = df.dropna()
         T.save_df(df,outf)
         T.df_to_excel(df,outf)
+        T.save_npy(result_dic,outf)
+
 
 
     def check_pix(self):
-        dff = join(self.this_class_arr,'Monthly_Early_Peak_Late.df')
-        df = T.load_df(dff)
-        pix_list = T.get_df_unique_val_list(df,'pix')
-        spatial_dic = {}
-        for pix in pix_list:
-            spatial_dic[pix] = 1
-        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dic)
-        DIC_and_TIF().plot_back_ground_arr(global_land_tif)
-        plt.imshow(arr)
-        plt.show()
-        pass
+
+        outf = join(self.this_class_arr, 'Monthly_Early_Peak_Late.df')
+        product = 'MODIS_LAI'
+        phenology_df = T.load_df(
+            results_root + f'Main_flow/arr/Phenology/average_phenology/{product}/phenology_dataframe_{product}.df')
+        phenology_df = phenology_df.dropna()
+
+        sos_dict = T.df_to_spatial_dic(phenology_df, 'early_start_mon')
+        eos_dict = T.df_to_spatial_dic(phenology_df, 'late_end_mon')
+        vege_dir = f'/Volumes/SSD_sumsang/project_greening/Data/original_dataset/{product}_dic/'  # monthly
+        vege_dic = T.load_npy_dir(vege_dir)
+        result_dic = {}
+        for pix in tqdm(vege_dic):
+            r,c=pix
+            if r>150:
+                continue
+            if r<120:
+                continue
+            if pix not in sos_dict:
+                continue
+            vals = vege_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            sos = int(sos_dict[pix])
+            eos = int(eos_dict[pix])
+
+            vals = np.array(vals)
+            vals = T.mask_999999_arr(vals, warning=False)
+            val_reshape = vals.reshape((-1, 12))
+            val_reshape_T = val_reshape.T
+            month_mean_list = []
+            for month in val_reshape_T:
+                month_mean = np.nanmean(month)
+                month_mean_list.append(month_mean)
+            isnan_list = np.isnan(month_mean_list)
+
+            max_n_index, max_n_val = T.pick_max_n_index(month_mean_list, n=2)
+            peak_months_distance = abs(max_n_index[0] - max_n_index[1])
+
+            max_n_index = list(max_n_index)
+            max_n_index.sort()
+            if max_n_index[0] < 3:
+                continue
+            if max_n_index[1] >= 10:
+                continue
+            peak_mon = np.array(max_n_index) + 1
+            if sos > peak_mon[0]:
+                continue
+            if peak_mon[-1] + 1 > eos + 1:
+                continue
+            early_mon = list(range(sos, peak_mon[0]))
+            late_mon = list(range(peak_mon[-1] + 1, eos + 1))
+            # print(early_mon)
+
+            if peak_months_distance >= 2:
+                early_mon = list(range(sos, peak_mon[0]))
+                peak_mon = list(range(peak_mon[0], peak_mon[1] + 1))
+                late_mon = list(range(peak_mon[-1] + 1, eos + 1))
+                # print(peak_months_distance)
+                # print(early_mon)
+                # print(peak_mon)
+                # print(late_mon)
+                # print('--')
+                # plt.plot(month_mean_list)
+                # plt.show()
+            early_mon = np.array(early_mon)
+            peak_mon = np.array(peak_mon)
+            late_mon = np.array(late_mon)
+            # print(month_mean_list)
+            # print(early_mon)
+            # print(peak_mon)
+            # print(late_mon)
+            # plt.plot(month_mean_list)
+            # plt.show()
+            # exit()
+            result_dic_i = {
+                'early': early_mon,
+                'peak': peak_mon,
+                'late': late_mon,
+            }
+            result_dic[pix] = result_dic_i
+            plt.plot(month_mean_list)
+            early_mon=early_mon-1
+            peak_mon=peak_mon-1
+            late_mon=late_mon-1
+
+            plt.scatter(early_mon,[month_mean_list[i] for i in early_mon],c='g',s=20,zorder=10)
+            plt.scatter(peak_mon, [month_mean_list[i] for i in peak_mon],c='r',s=20,zorder=10)
+            plt.scatter(late_mon, [month_mean_list[i] for i in late_mon],c='b',s=20,zorder=10)
+            plt.title(str(pix)+'\n'+str(early_mon)+'\n'+str(peak_mon)+'\n'+str(late_mon)+'\n'+str(sos)+'\n'+str(eos))
+            plt.tight_layout()
+            plt.show()
+        df = T.dic_to_df(result_dic, 'pix')
+        # df = df.dropna()
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+        T.save_npy(result_dic, outf)
 
 class Pick_Early_Peak_Late_value:
 
