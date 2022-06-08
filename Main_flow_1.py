@@ -1,4 +1,5 @@
 # coding=utf-8
+import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -1099,7 +1100,8 @@ class Get_Monthly_Early_Peak_Late:
 
     def run(self):
         # self.Monthly_Early_Peak_Late()
-        self.check_pix()
+        self.Monthly_Early_Peak_Late_via_DOY()
+        # self.check_pix()
         pass
 
 
@@ -1189,6 +1191,114 @@ class Get_Monthly_Early_Peak_Late:
         T.df_to_excel(df,outf)
         T.save_npy(result_dic,outf)
 
+    def Monthly_Early_Peak_Late_via_DOY(self):
+
+        outf = join(self.this_class_arr, 'Monthly_Early_Peak_Late_via_DOY.df')
+        product = 'MODIS_LAI'
+        phenology_df = T.load_df(
+            results_root + f'Main_flow/arr/Phenology/average_phenology/{product}/phenology_dataframe_{product}.df')
+        phenology_df = phenology_df.dropna()
+        # T.print_head_n(phenology_df,5)
+
+        early_start_dict = T.df_to_spatial_dic(phenology_df, 'early_start')
+        early_end_dict = T.df_to_spatial_dic(phenology_df, 'early_end')
+        late_start_dict = T.df_to_spatial_dic(phenology_df, 'late_start')
+        late_end_dict = T.df_to_spatial_dic(phenology_df, 'late_end')
+
+        DOY_to_mon_dict = {}
+        base_time = datetime.datetime(2000, 1, 1)
+        for i in range(1,366):
+            time_i = base_time + datetime.timedelta(days=i-1)
+            mon = time_i.month
+            DOY_to_mon_dict[i] = mon
+        # DOY_to_mon_dict_reverse = T.reverse_dic(DOY_to_mon_dict)
+        # print(DOY_to_mon_dict_reverse)
+
+        vege_dir = f'/Volumes/SSD_sumsang/project_greening/Data/original_dataset/{product}_dic/'  # monthly
+        # vege_dir = f'/Volumes/NVME2T/greening_project_redo/data/BU_MCD_LAI_CMG/resample_bill_05_monthly_max_compose_per_pix/'  # monthly
+        vege_dic = T.load_npy_dir(vege_dir)
+        # exit()
+        result_dic = {}
+        for pix in tqdm(vege_dic):
+            r,c=pix
+            if r>150:
+                continue
+            if r<120:
+                continue
+            if pix not in early_start_dict:
+                continue
+            vals = vege_dic[pix]
+            if T.is_all_nan(vals):
+                continue
+            early_start = int(early_start_dict[pix])
+            early_end = int(early_end_dict[pix])
+            late_start = int(late_start_dict[pix])
+            late_end = int(late_end_dict[pix])
+            early_range = list(range(early_start,early_end+1))
+            peak_range = list(range(early_end+1,late_start))
+            late_range = list(range(late_start,late_end+1))
+            early_range_mon = [DOY_to_mon_dict[i] for i in early_range]
+            peak_range_mon = [DOY_to_mon_dict[i] for i in peak_range]
+            late_range_mon = [DOY_to_mon_dict[i] for i in late_range]
+
+            early_mon = sorted(list(set(early_range_mon)))
+            peak_mon = sorted(list(set(peak_range_mon)))[1:]
+            late_mon = sorted(list(set(late_range_mon)))[1:]
+
+            vals = np.array(vals)
+            vals = T.mask_999999_arr(vals, warning=False)
+            val_reshape = vals.reshape((-1, 12))
+            val_reshape_T = val_reshape.T
+            month_mean_list = []
+            for month in val_reshape_T:
+                month_mean = np.nanmean(month)
+                month_mean_list.append(month_mean)
+            isnan_list = np.isnan(month_mean_list)
+
+            max_n_index, max_n_val = T.pick_max_n_index(month_mean_list, n=2)
+            peak_months_distance = abs(max_n_index[0] - max_n_index[1])
+
+            max_n_index = list(max_n_index)
+            max_n_index.sort()
+            if max_n_index[0] < 3:
+                continue
+            if max_n_index[1] >= 10:
+                continue
+
+            early_mon = np.array(early_mon)
+            peak_mon = np.array(peak_mon)
+            late_mon = np.array(late_mon)
+            # print(month_mean_list)
+            # print(early_mon)
+            # print(peak_mon)
+            # print(late_mon)
+            # plt.plot(month_mean_list)
+            # plt.show()
+            # exit()
+            result_dic_i = {
+                'early': early_mon,
+                'peak': peak_mon,
+                'late': late_mon,
+            }
+            result_dic[pix] = result_dic_i
+
+            # plt.plot(month_mean_list)
+            # early_mon=early_mon-1
+            # peak_mon=peak_mon-1
+            # late_mon=late_mon-1
+            #
+            # plt.scatter(early_mon,[month_mean_list[i] for i in early_mon],c='g',s=70,zorder=40)
+            # plt.scatter(peak_mon, [month_mean_list[i] for i in peak_mon],c='r',s=70,zorder=40)
+            # plt.scatter(late_mon, [month_mean_list[i] for i in late_mon],c='b',s=70,zorder=40)
+            # plt.title(str(pix)+'\n'+str(early_mon)+'\n'+str(peak_mon)+'\n'+str(late_mon)+'\n'+str(early_start)+'\n'+str(late_end))
+            # plt.grid()
+            # plt.tight_layout()
+            # plt.show()
+        df = T.dic_to_df(result_dic, 'pix')
+        # df = df.dropna()
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+        T.save_npy(result_dic, outf)
 
 
     def check_pix(self):
