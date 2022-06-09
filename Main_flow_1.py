@@ -1096,7 +1096,7 @@ class Phenology:
 class Get_Monthly_Early_Peak_Late:
 
     def __init__(self):
-        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Get_Monthly_Early_Peak_Late',results_root_main_flow)
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('phenology',results_root_main_flow)
 
     def run(self):
         # self.Monthly_Early_Peak_Late()
@@ -1194,7 +1194,7 @@ class Get_Monthly_Early_Peak_Late:
     def Monthly_Early_Peak_Late_via_DOY(self):
 
         outf = join(self.this_class_arr, 'Monthly_Early_Peak_Late_via_DOY.df')
-        product = 'MODIS_LAI'
+        product = 'LAI3g'
         phenology_df = T.load_df(
             results_root + f'Main_flow/arr/Phenology/average_phenology/{product}/phenology_dataframe_{product}.df')
         phenology_df = phenology_df.dropna()
@@ -1221,10 +1221,10 @@ class Get_Monthly_Early_Peak_Late:
         result_dic = {}
         for pix in tqdm(vege_dic):
             r,c=pix
-            if r>150:
-                continue
-            if r<120:
-                continue
+            # if r>150:
+            #     continue
+            # if r<120:
+            #     continue
             if pix not in early_start_dict:
                 continue
             vals = vege_dic[pix]
@@ -7200,8 +7200,8 @@ class Moving_window_1:
                 plt.close()
 
 def main():
-    # Phenology().run()
-    Get_Monthly_Early_Peak_Late().run()
+    Phenology().run()
+    # Get_Monthly_Early_Peak_Late().run()
     # Pick_Early_Peak_Late_value().run()
     # Dataframe().run()
     # RF().run()
