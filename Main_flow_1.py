@@ -43,7 +43,7 @@ class Global_vars:
 
 
     def P_PET_ratio(self):
-        fdir = '/Volumes/NVME2T/wen_proj/20220111/aridity_P_PET_dic'
+        fdir = '/Volumes/SSD_sumsang/project_greening_redo/data/aridity_P_PET_dic'
         # fdir = P_PET_fdir
         dic = T.load_npy_dir(fdir)
         dic_long_term = {}
@@ -3684,7 +3684,7 @@ class Dataframe:
     def __init__(self):
         self.this_class_arr = join(results_root_main_flow,'arr/Dataframe/')
         self.dff = self.this_class_arr + 'dataframe_1982-2018.df'
-        self.P_PET_fdir = data_root+ 'aridity_P_PET_dic/'
+        self.P_PET_fdir = data_root+ 'original_dataset/aridity_P_PET_dic/'
         T.mkdir(self.this_class_arr,force=True)
 
 
@@ -5913,9 +5913,9 @@ class Plot_Trend_Spatial:
 class Sankey_plot:
 
     def __init__(self):
-        # Y_name = 'LAI3g'
-        Y_name = 'LAI4g'
-        self.fdir = f'/Volumes/NVME2T/greening_project_redo/data/Sankey_plot_data/{Y_name}'
+        Y_name = 'LAI3g'
+        # Y_name = 'LAI4g'
+        self.fdir = f'/Volumes/SSD_sumsang/project_greening/Result/new_result/partial_correlation_zscore/{Y_name}/'
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Sankey_plot',results_root_main_flow)
         outdir = join(self.this_class_arr,f'{Y_name}')
         T.mkdir(outdir)
@@ -5924,7 +5924,7 @@ class Sankey_plot:
 
     def run(self):
         # self.plot_p_value_spatial()
-        # df,var_list = self.join_dataframe(self.fdir)
+        df,var_list = self.join_dataframe(self.fdir)
         # df = self.build_sankey_plot(df,var_list)
         #
         df = self.__gen_df_init()
@@ -5932,8 +5932,8 @@ class Sankey_plot:
         # T.save_df(df,self.dff)
         # T.df_to_excel(df,self.dff)
 
-        # self.plot_Sankey(df,True)
-        self.plot_Sankey(df,False)
+        self.plot_Sankey(df,True)
+        # self.plot_Sankey(df,False)
         pass
 
     def __load_df(self):
@@ -6139,13 +6139,16 @@ class Sankey_plot:
 class Sankey_plot_max_contribution:
 
     def __init__(self):
-        # self.Y_name = 'LAI3g'
+        self.Y_name = 'LAI3g'
         # self.Y_name = 'LAI4g'
-        self.Y_name = 'MODIS-LAI'
-        self.var_list = ['CCI_SM', 'CO2', 'PAR', 'Temp', 'VPD']
+        # self.Y_name = 'MODIS-LAI'
+        self.var_list = ['CCI_SM', 'PAR', 'Temp', 'VPD']
         self.period_list = ['early', 'peak', 'late']
-        self.fdir = f'/Volumes/NVME2T/greening_project_redo/data/Sankey_plot_data/partial_corr/{self.Y_name}'
-        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Sankey_plot_max_contribution',results_root_main_flow)
+        self.fdir=f'/Volumes/SSD_sumsang/project_greening/Result/new_result/partial_correlation_zscore_detrend'
+        # self.fdir = f'/Volumes/SSD_sumsang/project_greening/Result/new_result/partial_correlation_zscore/{self.Y_name}'
+        # self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Sankey_plot_max_contribution',results_root_main_flow)
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Sankey_plot_max_contribution_detrend',
+                                                                                       results_root_main_flow)
         outdir = join(self.this_class_arr,f'{self.Y_name}')
         T.mkdir(outdir)
         self.dff = join(outdir,'dataframe.df')
@@ -6155,15 +6158,15 @@ class Sankey_plot_max_contribution:
 
     def run(self):
         # self.plot_p_value_spatial()
-        # df,var_list = self.join_dataframe(self.fdir)
-        # df = self.build_sankey_plot(df,var_list)
+        df,var_list = self.join_dataframe(self.fdir)
+        df = self.build_sankey_plot(df,var_list)
         # #
         df = self.__gen_df_init()
-        df = Dataframe().add_Humid_nonhumid(df)
+        # df = Dataframe().add_Humid_nonhumid(df)
         # T.save_df(df,self.dff)
         # T.df_to_excel(df,self.dff)
 
-        self.plot_Sankey(df,True)
+        # self.plot_Sankey(df,True)
         self.plot_Sankey(df,False)
         # self.plot_max_corr_spatial(df)
         # self.max_contribution_bar()
@@ -6317,12 +6320,18 @@ class Sankey_plot_max_contribution:
         node_list = early_max_var_list+peak_max_var_list+late_max_var_list
         position_dict = dict(zip(node_list, range(len(node_list))))
 
-        color_dict = {'CO2': self.__add_alpha_to_color('#00FF00'),
-                      'CCI_SM': self.__add_alpha_to_color('#00E7FF'),
-                      'PAR': self.__add_alpha_to_color('#FFFF00'),
-                      'Temp': self.__add_alpha_to_color('#FF0000'),
-                      'VPD': self.__add_alpha_to_color('#B531AF'),
+        color_dict = {
+                      'detrend_CCI_SM': self.__add_alpha_to_color('#00E7FF'),
+                      'detrend_PAR': self.__add_alpha_to_color('#FFFF00'),
+                      'detrend_Temp': self.__add_alpha_to_color('#FF0000'),
+                      'detrend_VPD': self.__add_alpha_to_color('#B531AF'),
                       }
+        # color_dict = {
+        #               'CCI_SM': self.__add_alpha_to_color('#00E7FF'),
+        #               'PAR': self.__add_alpha_to_color('#FFFF00'),
+        #               'Temp': self.__add_alpha_to_color('#FF0000'),
+        #               'VPD': self.__add_alpha_to_color('#B531AF'),
+        #               }
         node_color_list = [color_dict[var_] for var_ in var_list]
         node_color_list = node_color_list * 3
         # print(node_color_list)
@@ -7200,7 +7209,7 @@ class Moving_window_1:
                 plt.close()
 
 def main():
-    Phenology().run()
+    # Phenology().run()
     # Get_Monthly_Early_Peak_Late().run()
     # Pick_Early_Peak_Late_value().run()
     # Dataframe().run()
@@ -7214,7 +7223,7 @@ def main():
     # Time_series().run()
     # Plot_Trend_Spatial().run()
     # Sankey_plot().run()
-    # Sankey_plot_max_contribution().run()
+    Sankey_plot_max_contribution().run()
     # Sankey_plot_single_max_contribution().run()
     # Sankey_plot_PLS().run()
     # Moving_window_1().run()
