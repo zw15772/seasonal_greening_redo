@@ -6138,6 +6138,7 @@ class Sankey_plot:
 
 class Sankey_plot_max_contribution:
     # todo: 6-11
+    # done
 
     def __init__(self):
         self.Y_name = 'LAI3g'
@@ -6159,11 +6160,13 @@ class Sankey_plot_max_contribution:
 
     def run(self):
         # self.plot_p_value_spatial()
-        df,var_list = self.join_dataframe(self.fdir)
-        df = self.build_sankey_plot(df,var_list)
+        # df,var_list = self.join_dataframe(self.fdir)
+        # df = self.build_sankey_plot(df,var_list)
         # #
         df = self.__gen_df_init()
         # df = Dataframe().add_Humid_nonhumid(df)
+        # df = self.add_is_significant(df)
+
         # T.save_df(df,self.dff)
         # T.df_to_excel(df,self.dff)
 
@@ -6296,6 +6299,29 @@ class Sankey_plot_max_contribution:
         rgb_str = 'rgba'+str(rgb)
         return rgb_str
 
+    def add_is_significant(self,df):
+        # print(df)
+        # exit()
+        p_threshold = 0.1
+        period_list = ['early','peak','late']
+        for period in period_list:
+            print(period)
+            max_var_col = f'{period}_max_var'
+            for i,row in tqdm(df.iterrows(),total=len(df)):
+                max_var = row[max_var_col]
+                max_var_p_var = f'{max_var}_p_value'
+                try:
+                    p_value = row[max_var_p_var]
+                except:
+                    p_value = 1
+                if p_value > p_threshold:
+                    df.loc[i,f'{period}_significant'] = False
+                else:
+                    df.loc[i,f'{period}_significant'] = True
+
+        return df
+
+
     def plot_Sankey(self,df,ishumid):
         if ishumid:
             df = df[df['HI_reclass'] == 'Humid']
@@ -6376,15 +6402,20 @@ class Sankey_plot_max_contribution:
 
         for early_status in early_max_var_list:
             df_early = df[df[early_max_var_col] == early_status]
+            df_early = df_early[df_early['early_significant'] == True]
             early_count = len(df_early)
             for peak_status in peak_max_var_list:
                 df_peak = df_early[df_early[peak_max_var_col] == peak_status]
+                df_peak = df_peak[df_peak['peak_significant'] == True]
+
                 peak_count = len(df_peak)
                 source.append(position_dict[early_status])
                 target.append(position_dict[peak_status])
                 value.append(peak_count)
                 for late_status in late_max_var_list:
                     df_late = df_peak[df_peak[late_max_var_col] == late_status]
+                    df_late = df_late[df_late['late_significant'] == True]
+
                     late_count = len(df_late)
                     source.append(position_dict[peak_status])
                     target.append(position_dict[late_status])
@@ -6401,9 +6432,9 @@ class Sankey_plot_max_contribution:
         data = go.Sankey(link=link, node=node, arrangement='snap', textfont=dict(color="rgba(0,0,0,1)", size=18))
         fig = go.Figure(data)
         fig.update_layout(title_text=f'{title}')
-        fig.write_html(join(outdir, f'{title}.html'))
+        # fig.write_html(join(outdir, f'{title}.html'))
         # fig.write_image(join(outdir, f'{title}.png'))
-        # fig.show()
+        fig.show()
 
 
     def plot_p_value_spatial(self):
