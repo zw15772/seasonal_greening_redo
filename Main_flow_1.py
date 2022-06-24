@@ -7195,26 +7195,27 @@ class multiregression_plot:
         model_list.sort()
         for var_ in var_list:
             fig, ax = plt.subplots()
+            matrix = []
+            yticks_list = []
             for period in period_list:
-                x = []
-                y = []
-                color = []
+                temp = []
+                xticks_list = []
                 for model in model_list:
                     df_i = df[df['drivers']==var_]
                     col = f'{period}_{model}'
                     value = df_i[col].tolist()[0]
-                    x.append(model)
-                    y.append(period)
-                    color.append(value)
-                ax.scatter(x,y,c=color,cmap='jet',s=900,alpha=1,edgecolors='none',vmin=0,vmax=20,zorder=2,marker='s')
-            ax.set_title(f'{var_}')
-            ax.set_xlabel('model')
-            ax.set_ylabel('period')
-            ax.set_xticklabels(model_list,rotation=90)
-            # set colorbar
-            cbar = plt.colorbar(ax.scatter(x,y,c=color,cmap='jet',s=100,alpha=1,edgecolors='none',vmin=0,vmax=20,zorder=2,marker='s'))
+                    temp.append(value)
+                    xticks_list.append(model)
+                matrix.append(temp)
+                yticks_list.append(period)
+            matrix = np.array(matrix)
+            sns.heatmap(matrix, annot=True, fmt='.2f', ax=ax)
+            plt.xticks(range(len(xticks_list)), xticks_list, rotation=90)
+            plt.yticks(range(len(yticks_list)), yticks_list)
+            plt.title(f'{var_}')
             plt.tight_layout()
             plt.show()
+
 
 
 
