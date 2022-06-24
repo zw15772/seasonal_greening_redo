@@ -7176,7 +7176,8 @@ class multiregression_plot:
         self.plot_matrix()
 
     def plot_matrix(self):
-        f = '/Volumes/NVME2T/greening_project_redo/data/220624/Dryland.df'
+        # f = '/Volumes/NVME2T/greening_project_redo/data/220624/Dryland.df'
+        f = '/Volumes/NVME2T/greening_project_redo/data/220624/Humid.df'
         df = T.load_df(f)
         var_list = ['CCI_SM', 'CO2', 'PAR', 'Temp', 'VPD']
         columns_list = list(df.columns)
@@ -7205,13 +7206,13 @@ class multiregression_plot:
                     x.append(model)
                     y.append(period)
                     color.append(value)
-                ax.scatter(x,y,c=color,cmap='jet',s=900,alpha=1,edgecolors='none',zorder=2,marker='s')
+                ax.scatter(x,y,c=color,cmap='jet',s=900,alpha=1,edgecolors='none',vmin=0,vmax=20,zorder=2,marker='s')
             ax.set_title(f'{var_}')
             ax.set_xlabel('model')
             ax.set_ylabel('period')
             ax.set_xticklabels(model_list,rotation=90)
             # set colorbar
-            cbar = plt.colorbar(ax.scatter(x,y,c=color,cmap='jet',s=100,alpha=1,edgecolors='none',zorder=2,marker='s'))
+            cbar = plt.colorbar(ax.scatter(x,y,c=color,cmap='jet',s=100,alpha=1,edgecolors='none',vmin=0,vmax=20,zorder=2,marker='s'))
             plt.tight_layout()
             plt.show()
 
