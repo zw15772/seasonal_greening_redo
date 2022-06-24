@@ -7165,12 +7165,58 @@ class Sankey_plot_PLS:
 class multiregression_plot:
     #todo 6-20 实现nc 文章 df = df[df['row'] < 120]
 
+    def __init__(self):
         # df = df[df['HI_class'] == 'Humid']
         # df = df[df['NDVI_MASK'] == 1]
         # df=df[df['max_trend']<10]
         # df = df[df['landcover'] !='cropland']
+        pass
 
-    pass
+    def run(self):
+        self.plot_matrix()
+
+    def plot_matrix(self):
+        f = '/Volumes/NVME2T/greening_project_redo/data/220624/Dryland.df'
+        df = T.load_df(f)
+        var_list = ['CCI_SM', 'CO2', 'PAR', 'Temp', 'VPD']
+        columns_list = list(df.columns)
+        columns_list.remove('drivers')
+        period_list = ['early','peak','late']
+
+        print(columns_list)
+        model_list = []
+        for column in columns_list:
+            period = column.split('_')[0]
+            model = column.split('_')[1:]
+            model = '_'.join(model)
+            model_list.append(model)
+        model_list = list(set(model_list))
+        model_list.sort()
+        for var_ in var_list:
+            fig, ax = plt.subplots()
+            for period in period_list:
+                x = []
+                y = []
+                color = []
+                for model in model_list:
+                    df_i = df[df['drivers']==var_]
+                    col = f'{period}_{model}'
+                    value = df_i[col].tolist()[0]
+                    x.append(model)
+                    y.append(period)
+                    color.append(value)
+                ax.scatter(x,y,c=color,cmap='jet',s=900,alpha=1,edgecolors='none',zorder=2,marker='s')
+            ax.set_title(f'{var_}')
+            ax.set_xlabel('model')
+            ax.set_ylabel('period')
+            ax.set_xticklabels(model_list,rotation=90)
+            # set colorbar
+            cbar = plt.colorbar(ax.scatter(x,y,c=color,cmap='jet',s=100,alpha=1,edgecolors='none',zorder=2,marker='s'))
+            plt.tight_layout()
+            plt.show()
+
+
+
 class Moving_window_1:
 
     def __init__(self):
@@ -7256,10 +7302,11 @@ def main():
     # Time_series().run()
     # Plot_Trend_Spatial().run()
     # Sankey_plot().run()
-    Sankey_plot_max_contribution().run()
+    # Sankey_plot_max_contribution().run()
     # Sankey_plot_single_max_contribution().run()
     # Sankey_plot_PLS().run()
     # Moving_window_1().run()
+    multiregression_plot().run()
 
     pass
 
