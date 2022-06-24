@@ -5913,9 +5913,10 @@ class Plot_Trend_Spatial:
 class Sankey_plot:
 
     def __init__(self):
-        Y_name = 'LAI3g'
+        Y_name = 'MODIS_LAI'
         # Y_name = 'LAI4g'
-        self.fdir = f'/Volumes/SSD_sumsang/project_greening/Result/new_result/partial_correlation_zscore/{Y_name}/'
+        # self.fdir = f'/Volumes/SSD_sumsang/project_greening/Result/new_result/multiregression/daily/{Y_name}/'
+        self.fdir=results_root+f'partial_correlation/partial_correlation_relative_change_trend/daily/{Y_name}'
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Sankey_plot',results_root_main_flow)
         outdir = join(self.this_class_arr,f'{Y_name}')
         T.mkdir(outdir)
@@ -5924,7 +5925,7 @@ class Sankey_plot:
 
     def run(self):
         # self.plot_p_value_spatial()
-        df,var_list = self.join_dataframe(self.fdir)
+        # df,var_list = self.join_dataframe(self.fdir)
         # df = self.build_sankey_plot(df,var_list)
         #
         df = self.__gen_df_init()
@@ -5956,7 +5957,8 @@ class Sankey_plot:
         var_list = []
         for f in T.listdir(fdir):
             print(f)
-            period = f.split('.')[0].split('_')[-2]
+            # period = f.split('.')[0].split('_')[-2]
+            period = f.split('.')[0].split('_')[-3]
             dic = T.load_npy(join(fdir,f))
             df_i = T.dic_to_df(dic,key_col_str='pix')
             old_col_list = []
@@ -5967,9 +5969,9 @@ class Sankey_plot:
                 old_col_list.append(col)
                 var_list.append(col)
             if '_p_value_' in f:
-                new_col_list = [f'{period}_{col}_p_value' for col in old_col_list]
+                new_col_list = [f'{col}_p_value' for col in old_col_list]
             else:
-                new_col_list = [f'{period}_{col}' for col in old_col_list]
+                new_col_list = [f'{col}' for col in old_col_list]
             for i in range(len(old_col_list)):
                 new_name = new_col_list[i]
                 old_name = old_col_list[i]
@@ -5983,22 +5985,15 @@ class Sankey_plot:
 
     def build_sankey_plot(self,df,var_list,p_threshold=0.1):
 
-        period_list = ['early','peak','late']
+        # period_list = ['early','peak','late']
         for var_ in var_list:
-            for period in period_list:
-                var_name_corr = f'{period}_{var_}'
-                var_name_p_value = f'{period}_{var_}_p_value'
-                for i,row in tqdm(df.iterrows(),total=len(df),desc=f'{var_}-{period}'):
-                    corr = row[var_name_corr]
-                    p_value = row[var_name_p_value]
-                    if p_value > p_threshold:
-                        corr_class = f'{period}-Non_significant'
-                    else:
-                        if corr > 0:
-                            corr_class = f'{period}-Positive'
-                        else:
-                            corr_class = f'{period}-Negative'
-                    df.loc[i,f'{var_}_{period}_class'] = corr_class
+            # for period in period_list:
+            var_name_corr = f'{var_}'
+            var_name_p_value = f'{var_}_p_value'
+            for i,row in tqdm(df.iterrows(),total=len(df),desc=f'{var_}'):
+                corr = row[var_name_corr]
+
+
         T.save_df(df, self.dff)
         T.df_to_excel(df, self.dff)
 
@@ -6144,9 +6139,9 @@ class Sankey_plot_max_contribution:
         self.Y_name = 'LAI3g'
         # self.Y_name = 'LAI4g'
         # self.Y_name = 'MODIS-LAI'
-        self.var_list = ['CCI_SM', 'PAR', 'Temp', 'VPD']
+        self.var_list = ['CCI_SM', 'PAR', 'Temp', 'VPD','CO2']
         self.period_list = ['early', 'peak', 'late']
-        self.fdir=f'/Volumes/SSD_sumsang/project_greening/Result/new_result/partial_correlation_zscore_detrend'
+        self.fdir=f'/Volumes/SSD_sumsang/project_greening/Result/new_result/multiregression/daily/{self.Y_name}'
         # self.fdir = f'/Volumes/SSD_sumsang/project_greening/Result/new_result/partial_correlation_zscore/{self.Y_name}'
         # self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Sankey_plot_max_contribution',results_root_main_flow)
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Sankey_plot_max_contribution_detrend',
@@ -6160,17 +6155,18 @@ class Sankey_plot_max_contribution:
 
     def run(self):
         # self.plot_p_value_spatial()
-        # df,var_list = self.join_dataframe(self.fdir)
+        df,var_list = self.join_dataframe(self.fdir)
         # df = self.build_sankey_plot(df,var_list)
-        # #
+        # # #
         df = self.__gen_df_init()
         # df = Dataframe().add_Humid_nonhumid(df)
-        # df = self.add_is_significant(df)
-
+        # # df = self.add_is_significant(df)
+        #
         # T.save_df(df,self.dff)
         # T.df_to_excel(df,self.dff)
 
         # self.plot_Sankey(df,True)
+
         self.plot_Sankey(df,False)
         # self.plot_max_corr_spatial(df)
         # self.max_contribution_bar()
@@ -6347,18 +6343,13 @@ class Sankey_plot_max_contribution:
         node_list = early_max_var_list+peak_max_var_list+late_max_var_list
         position_dict = dict(zip(node_list, range(len(node_list))))
 
-        color_dict = {
-                      'detrend_CCI_SM': self.__add_alpha_to_color('#00E7FF'),
-                      'detrend_PAR': self.__add_alpha_to_color('#FFFF00'),
-                      'detrend_Temp': self.__add_alpha_to_color('#FF0000'),
-                      'detrend_VPD': self.__add_alpha_to_color('#B531AF'),
+        color_dict = {'CO2': self.__add_alpha_to_color('#1f77b4'),
+                      'CCI_SM': self.__add_alpha_to_color('#00E7FF'),
+                      'PAR': self.__add_alpha_to_color('#FFFF00'),
+                      'Temp': self.__add_alpha_to_color('#FF0000'),
+                      'VPD': self.__add_alpha_to_color('#B531AF'),
                       }
-        # color_dict = {
-        #               'CCI_SM': self.__add_alpha_to_color('#00E7FF'),
-        #               'PAR': self.__add_alpha_to_color('#FFFF00'),
-        #               'Temp': self.__add_alpha_to_color('#FF0000'),
-        #               'VPD': self.__add_alpha_to_color('#B531AF'),
-        #               }
+
         node_color_list = [color_dict[var_] for var_ in var_list]
         node_color_list = node_color_list * 3
         # print(node_color_list)
@@ -7170,6 +7161,16 @@ class Sankey_plot_PLS:
 
         pass
 
+
+class multiregression_plot:
+    #todo 6-20 实现nc 文章 df = df[df['row'] < 120]
+
+        # df = df[df['HI_class'] == 'Humid']
+        # df = df[df['NDVI_MASK'] == 1]
+        # df=df[df['max_trend']<10]
+        # df = df[df['landcover'] !='cropland']
+
+    pass
 class Moving_window_1:
 
     def __init__(self):
