@@ -1,6 +1,8 @@
 # coding=utf-8
 import zipfile
 
+import traitlets
+
 from __init__ import *
 
 global_land_tif = join(this_root,'conf/land.tif')
@@ -14,11 +16,11 @@ global_season_dic = [
 ]
 
 vars_info_dic = {
-# 'LAI_3g': {
-# 'path':join(data_root, 'LAI_3g/per_pix'),
-# 'unit': 'm2/m2',
-# 'start_year':1982,
-# },
+'LAI_3g': {
+'path':join(data_root, 'LAI_3g/per_pix'),
+'unit': 'm2/m2',
+'start_year':1982,
+},
 # 'SPEI': {
 # 'path':join(data_root, 'original_dataset/SPEI3_dic'),
 # 'unit': 'SPEI',
@@ -1000,56 +1002,8 @@ class LAI_3g:
         pass
 
     def run(self):
-        self.tbl_to_tif()
         pass
 
-    def __mat_to_tif(self,mat_f,outf):
-        print(mat_f)
-        mat_f_r = scipy.io.matlab.mio.loadmat(mat_f)
-        print(mat_f_r)
-        exit()
-        # print(mat_f_r.keys())
-        matrix = mat_f_r['outmat']
-        # lai_arr = matrix[0][0][0]
-        # lai_arr = matrix[0][0][1]
-        # lai_arr = matrix[0][0][2]
-        # lai_arr = matrix[0][0][3]
-        lai_arr = matrix[0][0][4]
-        lai_arr = np.array(lai_arr)
-        lai_arr[lai_arr > 200] = np.nan
-        lai_arr = lai_arr / 10.
-        DIC_and_TIF(pixelsize=0.05).arr_to_tif(lai_arr,outf)
-
-    def tbl_to_tif(self):
-
-        fdir = join(self.datadir,'avhrrbulai_v02')
-        outdir = join(self.datadir,'tif')
-        T.mk_dir(outdir)
-        # T.open_path_and_file(outdir)
-        for f in tqdm(T.listdir(fdir)):
-            outf = join(outdir,f.replace('.mat','.tif'))
-            self.__mat_to_tif(join(fdir,f),outf)
-
-        pass
-
-    def tbl_to_tif1(self):
-
-        fdir = join(self.datadir,'avhrrbulai_v02')
-        for f in T.listdir(fdir):
-            print(f)
-
-    def resample(self):
-        fdir = join(self.datadir,'gimms_lai4g_tiff')
-        outdir = join(self.datadir,'tif_resample')
-        T.mk_dir(outdir)
-        for f in tqdm(T.listdir(fdir)):
-            fpath = join(fdir,f)
-            outf = join(outdir,f)
-            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
-            array_resample = T.resample_nan(array,0.5,pixelWidth)
-            array_resample[array_resample == 0] = np.nan
-            array_resample = array_resample[::-1]
-            DIC_and_TIF().arr_to_tif(array_resample,outf)
 
 
 class VODCA:
@@ -1231,7 +1185,8 @@ class MODIS_LAI_BU_CMG:
         # self.resample_bill()
         # self.rename()
         # self.monthly_compose()
-        self.per_pix()
+        # self.per_pix()
+        self.per_pix_biweekly()
         pass
 
     def __mat_to_tif(self,mat_f,outf):
@@ -1320,6 +1275,26 @@ class MODIS_LAI_BU_CMG:
         Pre_Process().data_transform_with_date_list(fdir,outdir,date_list=date_list)
         pass
 
+    def per_pix_biweekly(self):
+        fdir = join(self.datadir,'resample_bill')
+        outdir = join(self.datadir,'per_pix_biweekly')
+        T.mk_dir(outdir)
+        # T.open_path_and_file(outdir)
+        year_list = []
+        for f in T.listdir(fdir):
+            year = f[:4]
+            if not year in year_list:
+                year_list.append(year)
+        for year in year_list:
+            annual_flist = []
+            for f in T.listdir(fdir):
+                if f[:4] == year:
+                    annual_flist.append(f)
+            print(len(annual_flist))
+
+
+
+        pass
 
 def check_per_pix_data():
     dff = '/Volumes/NVME2T/greening_project_redo/results/Main_flow_1/arr/Pick_Early_Peak_Late_value/Pick_variables/MODIS_LAI_CMG.df'
@@ -1336,6 +1311,25 @@ def check_per_pix_data():
 
     pass
 
+
+class TRENDY:
+
+    def __init__(self):
+
+        pass
+
+
+    def run(self):
+        self.nc_to_tif()
+        pass
+
+    def nc_to_tif(self):
+        f = '/Volumes/NVME2T/wen_proj/Trendy_nc/DLEM_S2_lai.nc'
+        outdir = '/Volumes/NVME2T/wen_proj/Trendy_nc/tif'
+        T.mk_dir(outdir)
+        T.nc_to_tif(f,'lai',outdir)
+        pass
+
 def main():
     # LAI().run()
     # seasonal_split_ly_NDVI()
@@ -1348,6 +1342,7 @@ def main():
     # VODCA().run()
     # LAI_4g_v101().run()
     # MODIS_LAI_BU_CMG().run()
+    TRENDY().run()
     # check_cci_sm()
     # f = '/Volumes/NVME2T/greening_project_redo/data/GEE_AVHRR_LAI/per_pix_clean/per_pix_dic_005.npy'
     # dic = T.load_npy(f)
@@ -1357,7 +1352,7 @@ def main():
     #     plt.plot(vals)
     #     plt.show()
     # Resample().run()
-    check_per_pix_data()
+    # check_per_pix_data()
     pass
 
 

@@ -7194,7 +7194,6 @@ class multiregression_plot:
         model_list = list(set(model_list))
         model_list.sort()
         for var_ in var_list:
-            fig, ax = plt.subplots()
             matrix = []
             yticks_list = []
             for period in period_list:
@@ -7202,16 +7201,24 @@ class multiregression_plot:
                 xticks_list = []
                 for model in model_list:
                     df_i = df[df['drivers']==var_]
+                    # df_modis = df[df[col]=='MODIS_LAI']
                     col = f'{period}_{model}'
+                    col_modis = f'{period}_MODIS_LAI'
                     value = df_i[col].tolist()[0]
-                    temp.append(value)
+                    value_modis = df_i[col_modis].tolist()[0]
+                    temp.append(value-value_modis)
                     xticks_list.append(model)
                 matrix.append(temp)
                 yticks_list.append(period)
             matrix = np.array(matrix)
-            sns.heatmap(matrix, annot=True, fmt='.2f', ax=ax)
-            plt.xticks(range(len(xticks_list)), xticks_list, rotation=90)
-            plt.yticks(range(len(yticks_list)), yticks_list)
+            std = np.std(matrix)
+            mean = np.mean(matrix)
+            # vmin = mean - std
+            # vmax = mean + std
+            fig, ax = plt.subplots(figsize=(15,5))
+            sns.heatmap(matrix, annot=True, fmt='.2f', ax=ax, cmap='RdBu_r', yticklabels=yticks_list, xticklabels=xticks_list,vmin=-3*std,vmax=3*std)
+            # plt.xticks(range(len(xticks_list)), xticks_list, rotation=90,ha='center')
+            # plt.yticks(range(len(yticks_list)), yticks_list, rotation=0,va='center')
             plt.title(f'{var_}')
             plt.tight_layout()
             plt.show()
