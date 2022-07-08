@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 import Main_flow
+import ternary
 from preprocess import *
 from __init__ import *
 results_root_main_flow = join(results_root, 'Main_flow')
@@ -7296,6 +7297,311 @@ class Moving_window_1:
                 # plt.savefig(join(outdir,f'legend.pdf'))
                 plt.close()
 
+
+
+class Ternary_plot:
+
+    def __init__(self):
+        pass
+
+    def run(self):
+        # self.modify_df()
+        self.plot_scatter()
+
+        pass
+
+
+    def modify_df(self):
+        dff = '/Volumes/NVME2T/greening_project_redo/data/TRENDY/max_correlation_trend_polar_bar/Humid.df'
+        outdff = '/Volumes/NVME2T/greening_project_redo/data/TRENDY/max_correlation_trend_polar_bar/Humid_modify.df'
+        df = T.load_df(dff)
+        period_list = ['early','peak','late']
+        variables_list = ['CO2', 'PAR', 'Temp', 'VPD', 'CCI_SM']
+        columns = df.columns
+        model_list = []
+        for col in columns:
+            if not '_' in col:
+                continue
+            col_split = col.split('_')
+            model = col_split[1:]
+            model = '_'.join(model)
+            model_list.append(model)
+        model_list = list(set(model_list))
+        model_list.sort()
+        result_dict = {}
+        for variable in variables_list:
+            df_var = df[df['drivers']==variable]
+            result_dict_i = {}
+            for model in model_list:
+                sum_ = []
+                for period in period_list:
+                    col = f'{period}_{model}'
+                    val = df_var[col].tolist()[0]
+                    sum_.append(val)
+                sum_ = np.sum(sum_)
+                for period in period_list:
+                    col = f'{period}_{model}'
+                    val = df_var[col].tolist()[0]
+                    ratio = val/sum_ * 100
+                    key = f'{period}_{model}'
+                    result_dict_i[key] = ratio
+            result_dict[variable] = result_dict_i
+        df_new = T.dic_to_df(result_dict,'drivers')
+        T.save_df(df_new,outdff)
+        T.df_to_excel(df_new,outdff)
+
+    def plot_scatter(self):
+        # dff = '/Volumes/NVME2T/greening_project_redo/data/TRENDY/max_correlation_trend_polar_bar/Dryland_modify.df'
+        dff = '/Volumes/NVME2T/greening_project_redo/data/TRENDY/max_correlation_trend_polar_bar/Humid_modify.df'
+        df = T.load_df(dff)
+        period_list = ['early', 'peak', 'late']
+        variables_list = ['CO2', 'PAR', 'Temp', 'VPD', 'CCI_SM']
+        columns = df.columns
+        model_list = []
+        for col in columns:
+            if not '_' in col:
+                continue
+            col_split = col.split('_')
+            model = col_split[1:]
+            model = '_'.join(model)
+            model_list.append(model)
+        model_list = list(set(model_list))
+        model_list.sort()
+
+        print(model_list)
+        # exit()
+        for variable in variables_list:
+            points = []
+            color = []
+            for model in model_list:
+                df_var = df[df['drivers']==variable]
+                # print(period_list)
+                point_i = []
+                if model == 'MODIS_LAI_daily':
+                    color.append('red')
+                elif model == 'LAI3g_daily':
+                    color.append('cyan')
+                elif model == 'Trendy_ensemble':
+                    color.append('blue')
+                else:
+                    color.append('gray')
+                for period in period_list:
+                    col = f'{period}_{model}'
+                    val = df_var[col].tolist()[0]
+                    point_i.append(val)
+                points.append(point_i)
+
+            figure, ax = plt.subplots(figsize=(16, 7))
+            fig, tax = ternary.figure(ax=ax,scale=100,permutation='120')
+            tax.boundary(linewidth=1.5)
+            tax.gridlines(color="black", multiple=10)
+
+            tax.ticks(linewidth=1, multiple=10, offset=0.03,clockwise=False)
+            # tax.ticks(linewidth=1, multiple=10, offset=0.03)
+            fontsize = 12
+            tax.left_axis_label("Early", fontsize=fontsize,offset=0.1)
+            tax.right_axis_label("Late", fontsize=fontsize,offset=0.1)
+            tax.bottom_axis_label("Peak", fontsize=fontsize,offset=0.1)
+            plt.axis('equal')
+            # tax.heatmap(data,style="triangular",vmin=0, vmax=100)
+            # order = left,bottom,right
+            # points = [[20,30,50]]
+            # cmap = 'BrBG_r'
+            # tax.scatter(points,color=c_vals,cmap=cmap,colormap=cmap,s=16,vmin=0,marker='h',vmax=9,colorbar=True,alpha=1,linewidth=0)
+            tax.scatter(points,color=color,s=66,marker='h',alpha=1,linewidth=0)
+            # tax.scatter(points,s=30,vmin=0,marker='h',vmax=12,colorbar=True,alpha=1,linewidth=0)
+            tax.boundary()
+            # plt.colorbar(ax)
+            plt.axis('off')
+            plt.title(f'{variable}')
+        plt.show()
+
+
+
+    def soil_texture_condition(self,sand,silt,clay,zone):
+        '''
+        classified by the proportion of silt, sand and clay
+        :return:
+        '''
+        c_heavy_clay = (sand<40 and silt<40 and clay>60)
+        c_clay = (sand<=45 and silt<=40 and 40<=clay<=60)
+        c_silty_clay = (sand<=20 and 40<=silt<=60 and 40<=clay<=60)
+        c_sandy_clay = (45<=sand<=65 and silt<20 and 37<=clay<=55)
+        c_sandy_clay_loam = (45<=sand<=80 and silt<=27 and 20<=clay<=37)
+        c_clay_loam = (20<=sand<=45 and 16<=silt<=52 and 28<=clay<=40)
+        c_silty_clay_loam = (sand<=20 and 40<=silt<=72 and 28<=clay<=40)
+        c_loam = (22<=sand<=52 and 28<=silt<=50 and 8<=clay<=28)
+        c_silt_loam = (sand<=50 and 50<=silt<=80 and 0<=clay<=28) or (sand<=8 and 80<=silt<=88 and 12<=clay<=20)
+        c_silt = (sand<=20 and silt>=80 and clay<=12)
+        # 有问题 TODO: need to be modified
+        c_sandy_loam = (42<=sand<=85 and silt<=50 and clay<=20)#######
+        c_sand = (sand>=85 and silt<=15 and clay<=10) #######
+        c_loamy_sand = ()
+
+        if zone == 'c_heavy_clay':
+            return c_heavy_clay
+        elif zone == 'c_clay':
+            return c_clay
+        elif zone == 'c_silty_clay':
+            return c_silty_clay
+        elif zone == 'c_sandy_clay':
+            return c_sandy_clay
+        elif zone == 'c_sandy_clay_loam':
+            return c_sandy_clay_loam
+        elif zone == 'c_clay_loam':
+            return c_clay_loam
+        elif zone == 'c_silty_clay_loam':
+            return c_silty_clay_loam
+        elif zone == 'c_loam':
+            return c_loam
+        elif zone == 'c_silt_loam':
+            return c_silt_loam
+        elif zone == 'c_silt':
+            return c_silt
+        else:
+            raise IOError('input error')
+
+
+        pass
+
+
+    def plot_classify_soil(self):
+        # 1 load soil and recovery time data
+        # recovery_tif = this_root_branch+'tif/Recovery_time1/recovery_time/mix.tif'
+        recovery_tif = this_root_branch + 'tif/Recovery_time1/recovery_time/late.tif'
+        # recovery_tif = this_root_branch+'tif/Recovery_time1/recovery_time/early.tif'
+        tif_CLAY = this_root_branch + '/tif/HWSD/T_CLAY_resample.tif'
+        tif_SAND = this_root_branch + '/tif/HWSD/T_SAND_resample.tif'
+        tif_SILT = this_root_branch + '/tif/HWSD/T_SILT_resample.tif'
+
+        arr_clay = to_raster.raster2array(tif_CLAY)[0]
+        arr_sand = to_raster.raster2array(tif_SAND)[0]
+        arr_silt = to_raster.raster2array(tif_SILT)[0]
+        arr_recovery = to_raster.raster2array(recovery_tif)[0]
+
+        arr_clay[arr_clay < -999] = np.nan
+        arr_sand[arr_sand < -999] = np.nan
+        arr_silt[arr_silt < -999] = np.nan
+        arr_recovery[arr_recovery < -999] = np.nan
+
+        # 2 make empty points list dic
+        points_list_dic = {}
+        for i in range(len(arr_clay)):
+            for j in range(len(arr_clay[0])):
+                if np.isnan(arr_silt[i][j]):
+                    continue
+                silt = int(arr_silt[i][j])
+                sand = int(arr_sand[i][j])
+                clay = int(arr_clay[i][j])
+                points_list_dic[(sand, silt, clay)] = []
+
+        for i in range(len(arr_clay)):
+            for j in range(len(arr_clay[0])):
+                if np.isnan(arr_silt[i][j]):
+                    continue
+                silt = int(arr_silt[i][j])
+                sand = int(arr_sand[i][j])
+                clay = int(arr_clay[i][j])
+                recovery = arr_recovery[i][j]
+                if np.isnan(recovery):
+                    continue
+                if recovery > 18:
+                    continue
+                points_list_dic[(sand, silt, clay)].append(recovery)
+
+        points_dic = {}
+        for key in points_list_dic:
+            vals = points_list_dic[key]
+            mean, xerr = Tools().arr_mean_nan(vals)
+            if not mean == None:
+                points_dic[key] = mean
+
+        zones = [
+            'c_heavy_clay',
+            'c_clay',
+            'c_silty_clay',
+            'c_sandy_clay',
+            'c_sandy_clay_loam',
+            'c_clay_loam',
+            'c_silty_clay_loam',
+            'c_loam',
+            'c_silt_loam',
+            'c_silt',
+        ]
+        zone_dic = {}
+        for z in zones:
+            pix_list = []
+            for key in points_dic:
+                sand,silt,clay = key
+                val = points_dic[key]
+                if self.soil_texture_condition(sand,silt,clay,z):
+                    pix_list.append(val)
+            pix_list_mean = np.mean(pix_list)
+            # print z,pix_list_mean
+            zone_dic[z] = pix_list_mean
+
+        fig, tax = ternary.figure(scale=100, permutation='120')
+        data = {}
+        for zone in tqdm(zone_dic):
+            if np.isnan(zone_dic[zone]):
+                continue
+            for i in range(101):
+                for j in range(101):
+                    for k in range(101):
+                        if not i+j+k==100:
+                            continue
+                        if self.soil_texture_condition(i,j,k,zone):
+                            data[(i,j,k)] = zone_dic[zone]
+        tax.heatmap(data,cmap='RdBu_r', style="dual-triangular")
+        tax.boundary(linewidth=1.5)
+        tax.gridlines(color="black", multiple=10)
+
+        tax.ticks(linewidth=1, multiple=10, offset=0.03, clockwise=True)
+        fontsize = 12
+        tax.left_axis_label("Clay", fontsize=fontsize, offset=0.1)
+        tax.right_axis_label("Silt", fontsize=fontsize, offset=0.1)
+        tax.bottom_axis_label("Sand", fontsize=fontsize, offset=0.1)
+        plt.axis('equal')
+
+        tax.show()
+
+
+
+
+    def clockwise_and_counter_clockwise_example(self):
+        '''
+        make sure clockwise and counter-clockwise
+        :return:
+        '''
+        sand = 20
+        silt = 20
+        clay = 60
+        # sand, silt, clay to axis 0, 1, 2 i.e. bottom, right, left
+
+        # method 1
+        points = [
+            # (sand, silt, clay), # clockwise=False
+            (silt, clay, sand), # clockwise=True
+        ]
+
+        # or method 2
+        # figure, tax = ternary.figure(scale=100, permutation='012')
+        # figure, tax = ternary.figure(scale=100, permutation='012')  # clockwise=False
+        figure, tax = ternary.figure(scale=100,permutation='120') # clockwise=True
+
+        tax.boundary(linewidth=1.5)
+        tax.gridlines(color="black", multiple=10)
+        tax.ticks(linewidth=1, multiple=10, offset=0.03, clockwise=True)
+        # tax.ticks(linewidth=1, multiple=10, offset=0.03)
+        fontsize = 12
+        tax.left_axis_label("Clay", fontsize=fontsize, offset=0.2)
+        tax.right_axis_label("Silt", fontsize=fontsize, offset=0.2)
+        tax.bottom_axis_label("Sand", fontsize=fontsize, offset=0.2)
+        plt.axis('equal')
+        tax.scatter(points, marker='D')
+        tax.boundary()
+        plt.show()
+
 def main():
     # Phenology().run()
     # Get_Monthly_Early_Peak_Late().run()
@@ -7315,7 +7621,8 @@ def main():
     # Sankey_plot_single_max_contribution().run()
     # Sankey_plot_PLS().run()
     # Moving_window_1().run()
-    multiregression_plot().run()
+    # multiregression_plot().run()
+    Ternary_plot().run()
 
     pass
 
