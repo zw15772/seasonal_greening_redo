@@ -60,7 +60,7 @@ from matplotlib.colors import LogNorm
 #     from jenkspy import JenksNaturalBreaks
 import scipy.io
 from scipy.stats import kruskal
-# import pingouin as pg
+import pingouin as pg
 import psutil
 
 
@@ -68,7 +68,7 @@ import psutil
 this_root = '/Volumes/NVME2T/greening_project_redo/'
 # this_root = '/Volumes/SSD_sumsang/project_greening_redo/'
 data_root = this_root + 'Data/'
-results_root = this_root + 'Result/new_result/'
+results_root = this_root + 'Result/'
 temporary_root = this_root + 'temporary/'
 # results_root_main_flow = this_root + 'main_flow_results/'
 # from LY_Tools import *
@@ -100,4 +100,4 @@ def kill_python_process():
 T = Tools()
 T.mk_dir(temporary_root)
 if __name__ == '__main__':
-    kill_python_process()
+    pass
