@@ -1,32 +1,36 @@
 # coding=utf-8
 from __init__ import *
-import green_driver_trend_contribution
+this_root = '/Volumes/NVME2T/greening_project_redo/Result/carryover_ML/'
+data_root = this_root + 'data/'
+results_root = this_root + 'results/'
 global_start_year = 1982
-# land_tif = r'C:\Users\pcadmin\Desktop\Data\Base_data\tif_template.tif'
-land_tif = join(results_root,'carryover_ML/Base_data/tif_template.tif')
+land_tif = join(results_root,'/Base_data/tif_template.tif')
+
 class Dataframe:
 
     def __init__(self):
-        # self.this_class_arr = results_root + 'carryover_ML/Dataframe/juping/'
-        self.this_class_arr = results_root + 'carryover_ML/Dataframe/detrended/'
-        T.mk_dir(self.this_class_arr, force=True)
-        self.Dataframe_build = green_driver_trend_contribution.Build_dataframe()
-        self.dff = self.this_class_arr + 'data_frame.df'
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Dataframe',
+                                                                                       results_root)
+        # self.mode = 'anomaly_detrend'
+        self.mode = 'std_anomaly_detrend'
+        outdir = join(self.this_class_arr,'Dynamic_pheno',self.mode)
+        T.mk_dir(outdir,force=True)
+        self.dff = join(outdir, 'data_frame.df')
         pass
 
     def run(self):
         df = self.__gen_df_init()
         # df = self.add_carryover(df)
-        # df = self.add_variables2()
+        df = self.add_variables2()
         df = self.add_sos_eos(df)
-        df = green_driver_trend_contribution.Build_dataframe().add_GLC_landcover_data_to_df(df)
-        df = green_driver_trend_contribution.Build_dataframe().add_NDVI_mask(df)
-        df = green_driver_trend_contribution.Build_dataframe().add_Koppen_data_to_df(df)
-        df = green_driver_trend_contribution.Build_dataframe().add_AI_to_df(df)
+        df = self.add_GLC_landcover_data_to_df(df)
+        df = self.add_NDVI_mask(df)
+        df = self.add_Koppen_data_to_df(df)
+        df = self.add_AI_to_df(df)
         df = T.add_lon_lat_to_df(df, DIC_and_TIF())
         df = self.add_early_peak_lai(df)
-        #
-        #
+
+
         T.save_df(df, self.dff)
         T.df_to_excel(df, self.dff)
 
@@ -155,8 +159,8 @@ class Dataframe:
         pass
 
     def add_variables2(self):
-
-        fdir = r'C:\Users\pcadmin\Desktop\Data\Detrend_pick_seasonal\\'
+        var_mode = self.mode
+        fdir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal')
         period_list = ['early','peak','late']
 
         void_df = pd.DataFrame()
@@ -179,7 +183,7 @@ class Dataframe:
 
         for var in T.listdir(fdir):
             for period in period_list:
-                fdir_i = join(fdir,var,'anomaly_juping_detrend',period)
+                fdir_i = join(fdir,var,var_mode,period)
                 dict_i = T.load_npy_dir(fdir_i)
                 col_name = f'{var}_{period}'
                 col_list.append(col_name)
@@ -205,7 +209,7 @@ class Dataframe:
         return void_df
 
     def add_sos_eos(self,df):
-        fdir = r'C:\Users\pcadmin\Desktop\Data\phenology_dic\LAI3g\\'
+        fdir = join(data_root,'lai3g_pheno')
         sos_f = join(fdir,'early_start.npy')
         eos_f = join(fdir,'late_end.npy')
 
@@ -272,20 +276,113 @@ class Dataframe:
     def add_early_peak_lai(self, df):
         LAI3g_early = df['LAI3g_early'].tolist()
         LAI3g_peak = df['LAI3g_peak'].tolist()
-        LAI3g_early = np.array(LAI3g_early)
-        LAI3g_peak = np.array(LAI3g_peak)
+        LAI3g_early = np.array(LAI3g_early,dtype=object)
+        LAI3g_peak = np.array(LAI3g_peak,dtype=object)
         mean = (LAI3g_early + LAI3g_peak) / 2
         df['LAI3g_early_peak_mean'] = mean
 
         return df
 
+    def add_GLC_landcover_data_to_df(self, df):
+
+        f = join(data_root,'Base_data/LC_reclass2.npy')
+
+        val_dic=T.load_npy(f)
+
+        f_name = f.split('.')[0]
+        print(f_name)
+
+        val_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+
+            pix = row['pix']
+            if not pix in val_dic:
+                val_list.append(np.nan)
+                continue
+            vals = val_dic[pix]
+            val_list.append(vals)
+
+        df['landcover_GLC'] = val_list
+        return df
+
+    def add_NDVI_mask(self,df):
+        # f =rf'C:/Users/pcadmin/Desktop/Data/Base_data/NDVI_mask.tif'
+        f = join(data_root, 'Base_data/NDVI_mask.tif')
+        print(f)
+
+        array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(f)
+        array = np.array(array, dtype=float)
+        val_dic = DIC_and_TIF().spatial_arr_to_dic(array)
+        f_name = 'NDVI_MASK'
+        print(f_name)
+        # exit()
+        val_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+
+            pix = row['pix']
+            if not pix in val_dic:
+                val_list.append(np.nan)
+                continue
+            vals = val_dic[pix]
+            if vals < -99:
+                val_list.append(np.nan)
+                continue
+            val_list.append(vals)
+        df[f_name] = val_list
+        return df
+    def add_Koppen_data_to_df(self, df):
+        f = join(data_root, 'Base_data/Koppen/koppen_reclass_spatial_dic.npy')
+        koppen_dic=T.load_npy(f)
+        koppen_list=[]
+
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            # year = row['year']
+            # pix = row.pix
+            pix = row['pix']
+            if not pix in koppen_dic:
+                koppen_list.append(np.nan)
+                continue
+            vals = koppen_dic[pix]
+
+            koppen_list.append(vals)
+            # landcover_list.append(vals)
+        df['koppen'] = koppen_list
+        return df
+    def add_AI_to_df(self, df):  #
+        P_PET_fdir = join(data_root, 'Base_data/aridity_P_PET_dic')
+        p_pet_dic = self.P_PET_ratio(P_PET_fdir)
+        df = T.add_spatial_dic_to_df(df, p_pet_dic, 'AI')
+        return df
+    def P_PET_ratio(self, P_PET_fdir):
+
+        fdir = P_PET_fdir
+        dic = T.load_npy_dir(fdir)
+        dic_long_term = {}
+        for pix in dic:
+            vals = dic[pix]
+            vals = np.array(vals)
+            vals = T.mask_999999_arr(vals, warning=False)
+            vals[vals == 0] = np.nan
+            if T.is_all_nan(vals):
+                continue
+            vals = self.drop_n_std(vals)
+            long_term_vals = np.nanmean(vals)
+            dic_long_term[pix] = long_term_vals
+        return dic_long_term
+    def drop_n_std(self, vals, n=1):
+        vals = np.array(vals)
+        mean = np.nanmean(vals)
+        std = np.nanstd(vals)
+        up = mean + n * std
+        down = mean - n * std
+        vals[vals > up] = np.nan
+        vals[vals < down] = np.nan
+        return vals
 
 class RF:
     def __init__(self):
-        self.this_class_arr = results_root + 'carryover_ML/RF/'
-        T.mk_dir(self.this_class_arr, force=True)
-
-        pass
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('RF',
+                                                                                       results_root)
 
     def run(self):
         dff = Dataframe().dff
@@ -293,19 +390,22 @@ class RF:
         df = T.load_df(dff)
         # df = Dataframe().add_carryover(df)
         # df = df.dropna(subset=['carryover'],how='any')
-
+        # print(df['eos_std_anomaly'])
         # T.print_head_n(df,5)
         # exit()
-        df = green_driver_trend_contribution.Build_dataframe().add_GLC_landcover_data_to_df(df)
-        df = green_driver_trend_contribution.Build_dataframe().add_NDVI_mask(df)
-        df = green_driver_trend_contribution.Build_dataframe().add_Koppen_data_to_df(df)
-        df = green_driver_trend_contribution.Build_dataframe().add_AI_to_df(df)
+        # df = green_driver_trend_contribution.Build_dataframe().add_GLC_landcover_data_to_df(df)
+        # df = green_driver_trend_contribution.Build_dataframe().add_NDVI_mask(df)
+        # df = green_driver_trend_contribution.Build_dataframe().add_Koppen_data_to_df(df)
+        # df = green_driver_trend_contribution.Build_dataframe().add_AI_to_df(df)
         # df = T.add_lon_lat_to_df(df, DIC_and_TIF())
         # df = Dataframe().add_sos_eos(df)
         df = Dataframe().clean_df(df)
         # df = df[df['LAI3g_early']>=0]
         # df = df[df['LAI3g_peak']>=0]
         # df = df[df['LAI3g_early_peak']>=0]
+        df = df[df['LAI3g_early_peak_mean']>=0]
+        # T.print_head_n(df,5)
+        # exit()
         # df = df[df['LAI3g_early_peak_mean']>=0.5]
         # df = df[df['LAI3g_early_peak_mean']>=0]
         # df = df[df['detrend_LAI3g_early_peak_anomaly']>=0]
@@ -318,7 +418,7 @@ class RF:
 
         ## RF permutation importance in different PFT
         # max_var_dict = self.do_rf_lc(df)
-        self.plot_rf_lc_imp(df)
+        # self.plot_rf_lc_imp(df)
 
 
         ## Multiregression beta
@@ -326,7 +426,7 @@ class RF:
         # self.plot_multireg()
 
         # RF PDP
-        # self.do_rf_pdp(df, 'threshold')
+        self.do_rf_pdp(df)
         # threshold_list = [0,0.5,1]
         # for threshold in threshold_list:
         #     print(threshold)
@@ -340,6 +440,9 @@ class RF:
     def x_variables(self):
         x_list = ['SPEI3_peak','SPEI3_late','VPD_peak','temp_peak',
                   'VPD_late','temp_late','sos_std_anomaly','LAI3g_early_peak_mean']
+        # x_list = ['LAI3g_early_peak_mean', 'SPEI3_peak', 'SPEI3_late', 'VPD_peak', 'temp_peak',
+        #           'VPD_late', 'temp_late', 'sos_std_anomaly']
+        # x_list = ['LAI3g_early_peak_mean']
         # x_list = ['CO2_peak','SPEI3_peak', 'VPD_peak', 'Temp_peak',
         #           'VPD_late', 'Temp_late']
         # x_list = ['detrend_CO2_peak_anomaly','detrend_SPEI3_peak','detrend_VPD_peak_anomaly','detrend_Temp_peak_anomaly','detrend_VPD_late_anomaly','detrend_Temp_late_anomaly']
@@ -349,7 +452,8 @@ class RF:
     def y_variable(self):
         # y = 'carryover'
         # y = 'LAI3g_late'
-        y = 'eos_std_anomaly'
+        y = 'eos_anomaly'
+        # y = 'eos_std_anomaly'
         # y = 'detrend_LAI3g_late_anomaly'
         return y
 
@@ -503,7 +607,7 @@ class RF:
 
     def rf(self,X_input,Y_input):
         # rf = RandomForestRegressor(n_jobs=4,n_estimators=100,)
-        rf = RandomForestRegressor(n_estimators=100,)
+        rf = RandomForestRegressor(n_jobs=7,n_estimators=100,)
         rf.fit(X_input, Y_input)
         return rf
 
@@ -512,7 +616,7 @@ class RF:
         # outfir_fig_dir=self.this_class_arr+'train_classfication_fig_driver/'  #修改
         # Tools().mk_dir(outfir_fig_dir)
 
-        rf = RandomForestRegressor(n_jobs=12,n_estimators=100,)
+        rf = RandomForestRegressor(n_jobs=6,n_estimators=100,)
         X_input=X_input[x_list]
         X_input=pd.DataFrame(X_input)
         df_new = pd.concat([X_input,Y_input], axis=1)
@@ -618,7 +722,7 @@ class RF:
         pass
 
     def __plot_PDP(self,col_name, data, model):
-        df = self.__get_PDPvalues_regression(col_name, data, model)
+        df = self.__get_PDPvalues(col_name, data, model)
         plt.rcParams.update({'font.size': 16})
         plt.rcParams["figure.figsize"] = (6,5)
         # fig, ax = plt.subplots()
@@ -628,35 +732,44 @@ class RF:
         plt.xlabel(col_name)
         # plt.tight_layout()
 
-    def __get_PDPvalues_regression(self, col_name, data, model, grid_resolution=50):
+    def __get_PDPvalues(self, col_name, data, model, grid_resolution=50):
+        '''
+        :param col_name: a variable
+        :param data: a dataframe of x variables
+        :param model: a random forest model
+        :param grid_resolution: the number of points in the partial dependence plot
+        :return: a dataframe of the partial dependence plot values
+        '''
         Xnew = data.copy()
-        sequence = np.linspace(np.min(data[col_name]), np.max(data[col_name]), grid_resolution)
+        sequence = np.linspace(np.min(data[col_name]), np.max(data[col_name]), grid_resolution) # create a sequence of values
         Y_pdp = []
+        Y_pdp_std = []
         for each in sequence:
             Xnew[col_name] = each
-            # T.print_head_n(Xnew)
-            try:
-                Y_temp = model.predict(Xnew)
-                Y_pdp.append(np.mean(Y_temp))
-            except Exception as e:
-                print(e)
-                print(col_name, data, model)
-                print(123)
-        return pd.DataFrame({col_name: sequence, 'PDs': Y_pdp})
+            Y_temp = model.predict(Xnew)
+            Y_pdp.append(np.mean(Y_temp))
+            Y_pdp_std.append(np.std(Y_temp))
+        # print('------------------')
+        # print(col_name)
+        # print('------------------')
+        # print(sequence)
+        # print(Y_pdp)
+        # print(Y_pdp_std)
+        return pd.DataFrame({col_name: sequence, 'PDs': Y_pdp, 'PDs_std': Y_pdp_std})
 
 
-    def do_rf_pdp(self,df,threshold):
-        # df = df[df['LAI3g_early_peak_mean']>=threshold]
-
-        outdir = join(self.this_class_arr,'rf_pdp_png1')
-        T.mk_dir(outdir)
+    def do_rf_pdp(self,df):
+        outdir = join(self.this_class_png,'rf_pdp_png',Dataframe().mode)
+        T.mk_dir(outdir,force=True)
 
         x_list = self.x_variables()
         y = self.y_variable()
-        outdir_i = join(outdir,y+f'_{threshold}')
-        if os.path.isdir(outdir_i):
-            return
+        outdir_i = join(outdir,y)
+        # if os.path.isdir(outdir_i):
+        #     return
         T.mk_dir(outdir_i)
+        # T.open_path_and_file(outdir_i)
+
         # cross_df_dict = T.cross_select_dataframe(df, 'landcover_GLC', 'koppen')
         cross_df_dict = T.cross_select_dataframe(df, 'landcover_GLC')
         imp_result_dict_all = {}
@@ -672,6 +785,7 @@ class RF:
             if len(X) < 100:
                 continue
             model = self.rf(X, Y)
+            print(model)
             flag = 1
             plt.figure(figsize=(10, 10))
             for x_var in x_list:
@@ -701,22 +815,26 @@ class RF:
 class Carryover_calculation:
 
     def __init__(self):
-
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Carryover_calculation',
+                                                                                       results_root)
         pass
 
     def log_ab(self):  # carryover algrithm
 
-        dic_mask_lc_file = 'C:/Users/pcadmin/Desktop/Data/Base_data/LC_reclass2.npy'
+        # dic_mask_lc_file = 'C:/Users/pcadmin/Desktop/Data/Base_data/LC_reclass2.npy'
+        dic_mask_lc_file = join(results_root,'Base_data','LC_reclass2.npy')
         dic_mask_lc = T.load_npy(dic_mask_lc_file)
 
-        tiff_mask_landcover_change = 'C:/Users/pcadmin/Desktop/Data/Base_data/lc_trend/max_trend.tif'
+        # tiff_mask_landcover_change = 'C:/Users/pcadmin/Desktop/Data/Base_data/lc_trend/max_trend.tif'
+        tiff_mask_landcover_change = join(results_root,'Base_data','lc_trend','max_trend.tif')
 
-        array_mask_landcover_change, originX, originY, pixelWidth, pixelHeight = to_raster.raster2array(
-            tiff_mask_landcover_change)
-        array_mask_landcover_change[array_mask_landcover_change * 20 > 10] = np.nan
-        array_mask_landcover_change = DIC_and_TIF().spatial_arr_to_dic(array_mask_landcover_change)
+        # array_mask_landcover_change, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(
+        #     tiff_mask_landcover_change)
+        # array_mask_landcover_change[array_mask_landcover_change * 20 > 10] = np.nan
+        # array_mask_landcover_change = DIC_and_TIF().spatial_arr_to_dic(array_mask_landcover_change)
 
         f_early_peak = results_root + f'anomaly/1982-2020/Y_daily_1982-2020/early_peak/LAI3g_early_peak_anomaly.npy'
+        f_early_peak = join(results_root,'anomaly','1982-2020','Y_daily_1982-2020','early_peak','LAI3g_early_peak_anomaly.npy')
         # f_early_peak = results_root + r'detrend\detrend_anomaly\Y\detrend_LAI3g_early_peak_anomaly.npy'
         f_late= results_root + f'anomaly/1982-2020/Y_daily_1982-2020/late/LAI3g_late_anomaly.npy'
         # f_late= results_root + r'detrend\detrend_anomaly\Y\detrend_LAI3g_late_anomaly.npy'
@@ -736,9 +854,6 @@ class Carryover_calculation:
             if r>120:
                 continue
             if dic_mask_lc[pix] == 'Crop':
-                continue
-            val_lc_change = array_mask_landcover_change[pix]
-            if val_lc_change == np.nan:
                 continue
             if pix not in dic_late:
                 continue
@@ -1017,22 +1132,27 @@ class Carryover_calculation:
 class Carryover_analysis:
 
     def __init__(self):
-        self.this_class_arr = results_root + 'carryover_ML/Carryover_analysis/'
-        T.mk_dir(self.this_class_arr, force=True)
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Carryover_analysis',
+                                                                                       results_root)
         pass
 
     def run(self):
-        self.eos_ratio()
+        # self.eos_ratio()
+        self.eos_ratio_dynamic()
+        # self.eos_pdf()
+        # self.late_ratio()
+        # self.late_lai_ratio_dynamic()
+        # self.late_lai_pdf()
         # self.carryover_x_threshold()
         # self.plot_carryover_x_threshold()
         pass
 
-    def add_early_peak_mean_to_df(self,df):
-        fdir = 'D:\Greening\Result\detrend\detrend_anomaly\X_predictors\\'
-        f = join(fdir, 'detrend_LAI3g_early_peak_anomaly.npy')
-        dict_early_peak = T.load_npy(f)
-        df = T.add_spatial_dic_to_df(df, dict_early_peak, 'early_peak_mean')
-        return df
+    # def add_early_peak_mean_to_df(self,df):
+    #     f = join(data_root, 'x_variables_detrend/X_predictors/detrend_LAI3g_early_peak_anomaly.npy')
+    #     # f = join(fdir, 'detrend_LAI3g_early_peak_anomaly.npy')
+    #     dict_early_peak = T.load_npy(f)
+    #     df = T.add_spatial_dic_to_df(df, dict_early_peak, 'early_peak_mean')
+    #     return df
 
 
     def eos_ratio(self):
@@ -1069,10 +1189,10 @@ class Carryover_analysis:
             std_eos = np.std(eos_list)
             advanced_sos_list = []
             for j in range(len(sos_list)):
-                # if sos_list[j]<mean_sos: # advanced SOS
-                #     advanced_sos_list.append(j)
-                if early_peak_mean[j]>0: # early peak greener than the average
+                if sos_list[j]<mean_sos: # advanced SOS
                     advanced_sos_list.append(j)
+                # if early_peak_mean[j]>0: # early peak greener than the average
+                #     advanced_sos_list.append(j)
                 # advanced_sos_list.append(j)
             advanced_sos_list = np.array(advanced_sos_list)
             advanced_eos_list = []
@@ -1117,6 +1237,315 @@ class Carryover_analysis:
         plt.colorbar()
         plt.show()
 
+    def eos_ratio_dynamic(self):
+        outdir = join(self.this_class_tif, 'eos_ratio_dynamic')
+        T.mk_dir(outdir, force=True)
+        T.open_path_and_file(outdir)
+        # fdir = '/Volumes/NVME2T/greening_project_redo/Result/carryover_ML/lai3g_pheno'
+        fdir = join(data_root, 'lai3g_pheno')
+        sos_f = join(fdir,'early_start.npy')
+        eos_f = join(fdir,'late_end.npy')
+        lai3g_early_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/early')
+        lai3g_peak_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/peak')
+        lai3g_late_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/late')
+        sos_dict = T.load_npy(sos_f)
+        eos_dict = T.load_npy(eos_f)
+        lai3g_early_dict = T.load_npy_dir(lai3g_early_dir)
+        lai3g_peak_dict = T.load_npy_dir(lai3g_peak_dir)
+        lai3g_late_dict = T.load_npy_dir(lai3g_late_dir)
+        dict_all = {'sos':sos_dict,'eos':eos_dict,'LAI3g_late':lai3g_late_dict,'LAI3g_peak':lai3g_peak_dict,'LAI3g_early':lai3g_early_dict}
+        df = T.spatial_dics_to_df(dict_all)
+        df = Dataframe().add_GLC_landcover_data_to_df(df)
+        df = Dataframe().add_NDVI_mask(df)
+        df = T.add_lon_lat_to_df(df)
+        df = Dataframe().add_early_peak_lai(df)
+        df = df[df['NDVI_MASK']==1]
+        df = df[df['landcover_GLC']!='Crop']
+        df = df[df['lat']>=30]
+
+        # landcover_GLC_list = T.get_df_unique_val_list(df,'landcover_GLC')
+        # print(landcover_GLC_list)
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif=land_tif)
+        # plt.show()
+        for i,row in df.iterrows():
+            # sos_list = row['sos']
+            eos_list = row['eos']
+            eos_mean = np.nanmean(eos_list)
+            eos_anomaly = []
+            for eos in eos_list:
+                eos_anomaly.append(eos-eos_mean)
+            early_peak_mean = row['LAI3g_early_peak_mean']
+            # late_lai = row['LAI3g_late']
+
+            # exit()
+            if type(early_peak_mean) == float:
+                continue
+            if type(eos_list) == float:
+                continue
+            # print(len(early_peak_mean))
+            # print(len(late_lai))
+            if not len(early_peak_mean) == len(eos_list):
+                continue
+
+            enhanced_early_peak_mean = []
+            for j in range(len(early_peak_mean)):
+                if early_peak_mean[j]>0:
+                    enhanced_early_peak_mean.append(j)
+
+            advanced_eos_list = []
+            for j in enhanced_early_peak_mean:
+                if eos_anomaly[j]>0: # eos_anomaly less than 0
+                    advanced_eos_list.append(j)
+            ratio = len(advanced_eos_list)/len(enhanced_early_peak_mean)
+            df.loc[i,'ratio'] = ratio
+        df = Dataframe().add_AI_to_df(df)
+
+        ratio_dict = T.df_to_spatial_dic(df,'ratio')
+        ratio_arr = DIC_and_TIF().pix_dic_to_spatial_arr(ratio_dict)
+        DIC_and_TIF().arr_to_tif(ratio_arr,join(outdir,'ratio.tif'))
+        # exit()
+        ratio_arr[ratio_arr<-999] = np.nan
+        plt.imshow(ratio_arr,cmap='jet_r',interpolation='nearest',vmin=0.5,vmax=1)
+        plt.colorbar()
+        plt.figure()
+        AI_bins = np.linspace(0.1,3.0,21)
+        # lat_bins = np.linspace(30,90,31)
+        df_group,bin_names = T.df_bin(df, 'AI', AI_bins)
+        # df_group,bin_names = T.df_bin(df, 'lat', lat_bins)
+        x_list = []
+        y_list = []
+        yerr_list = []
+        flag = 0
+        for name,df_group_i in df_group:
+            vals = df_group_i['ratio'].tolist()
+            mean = np.nanmean(vals)
+            # err = np.nanstd(vals)
+            err,_,_ = T.uncertainty_err(vals)
+            x_list.append(flag)
+            y_list.append(mean)
+            yerr_list.append(err)
+            flag += 1
+        plt.errorbar(x_list,y_list,yerr=yerr_list,fmt='o')
+        plt.xlabel('AI')
+        plt.ylabel('ratio')
+        plt.title('AI vs ratio')
+        plt.xticks(x_list,bin_names,rotation=90)
+        plt.tight_layout()
+        plt.show()
+
+    def late_lai_ratio_dynamic(self):
+        outdir = join(self.this_class_tif, 'late_lai_ratio_dynamic')
+        T.mk_dir(outdir, force=True)
+        T.open_path_and_file(outdir)
+        # fdir = '/Volumes/NVME2T/greening_project_redo/Result/carryover_ML/lai3g_pheno'
+        fdir = join(data_root, 'lai3g_pheno')
+        sos_f = join(fdir,'early_start.npy')
+        eos_f = join(fdir,'late_end.npy')
+        lai3g_early_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/early')
+        lai3g_peak_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/peak')
+        lai3g_late_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/late')
+        sos_dict = T.load_npy(sos_f)
+        eos_dict = T.load_npy(eos_f)
+        lai3g_early_dict = T.load_npy_dir(lai3g_early_dir)
+        lai3g_peak_dict = T.load_npy_dir(lai3g_peak_dir)
+        lai3g_late_dict = T.load_npy_dir(lai3g_late_dir)
+        dict_all = {'sos':sos_dict,'eos':eos_dict,'LAI3g_late':lai3g_late_dict,'LAI3g_peak':lai3g_peak_dict,'LAI3g_early':lai3g_early_dict}
+        df = T.spatial_dics_to_df(dict_all)
+        df = Dataframe().add_GLC_landcover_data_to_df(df)
+        df = Dataframe().add_NDVI_mask(df)
+        df = T.add_lon_lat_to_df(df)
+        df = Dataframe().add_early_peak_lai(df)
+        df = df[df['NDVI_MASK']==1]
+        df = df[df['landcover_GLC']!='Crop']
+        df = df[df['lat']>=30]
+
+        # landcover_GLC_list = T.get_df_unique_val_list(df,'landcover_GLC')
+        # print(landcover_GLC_list)
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif=land_tif)
+        # plt.show()
+        for i,row in df.iterrows():
+            # sos_list = row['sos']
+            # eos_list = row['eos']
+            early_peak_mean = row['LAI3g_early_peak_mean']
+            late_lai = row['LAI3g_late']
+
+            # exit()
+            if type(early_peak_mean) == float:
+                continue
+            if type(late_lai) == float:
+                continue
+            # print(len(early_peak_mean))
+            # print(len(late_lai))
+            if not len(early_peak_mean) == len(late_lai):
+                continue
+
+            enhanced_early_peak_mean = []
+            for j in range(len(early_peak_mean)):
+                if early_peak_mean[j]>0:
+                    enhanced_early_peak_mean.append(j)
+
+            late_lai_list = []
+            for j in enhanced_early_peak_mean:
+                if late_lai[j]>0: # late lai greater than 0
+                    late_lai_list.append(j)
+            ratio = len(late_lai_list)/len(enhanced_early_peak_mean)
+            df.loc[i,'ratio'] = ratio
+        df = Dataframe().add_AI_to_df(df)
+
+        ratio_dict = T.df_to_spatial_dic(df,'ratio')
+        ratio_arr = DIC_and_TIF().pix_dic_to_spatial_arr(ratio_dict)
+        DIC_and_TIF().arr_to_tif(ratio_arr,join(outdir,'ratio.tif'))
+        # exit()
+        ratio_arr[ratio_arr<-999] = np.nan
+        plt.imshow(ratio_arr,cmap='jet_r',interpolation='nearest',vmin=0.5,vmax=1)
+        plt.colorbar()
+        plt.figure()
+        AI_bins = np.linspace(0.1,3.0,21)
+        # lat_bins = np.linspace(30,90,31)
+        df_group,bin_names = T.df_bin(df, 'AI', AI_bins)
+        # df_group,bin_names = T.df_bin(df, 'lat', lat_bins)
+        x_list = []
+        y_list = []
+        yerr_list = []
+        flag = 0
+        for name,df_group_i in df_group:
+            vals = df_group_i['ratio'].tolist()
+            mean = np.nanmean(vals)
+            # err = np.nanstd(vals)
+            err,_,_ = T.uncertainty_err(vals)
+            x_list.append(flag)
+            y_list.append(mean)
+            yerr_list.append(err)
+            flag += 1
+        plt.errorbar(x_list,y_list,yerr=yerr_list,fmt='o')
+        plt.xlabel('AI')
+        plt.ylabel('ratio')
+        plt.title('AI vs ratio')
+        plt.xticks(x_list,bin_names,rotation=90)
+        plt.tight_layout()
+        plt.show()
+
+    def late_lai_pdf(self):
+        # fdir = '/Volumes/NVME2T/greening_project_redo/Result/carryover_ML/lai3g_pheno'
+        fdir = join(results_root, 'carryover_ML/lai3g_pheno')
+        sos_f = join(fdir, 'early_start.npy')
+        eos_f = join(fdir, 'late_end.npy')
+        lai3g_late_dir = join(results_root, 'carryover_ML/Detrend_pick_seasonal/LAI3g/anomaly_detrend/late')
+        sos_dict = T.load_npy(sos_f)
+        eos_dict = T.load_npy(eos_f)
+        lai3g_late_dict = T.load_npy_dir(lai3g_late_dir)
+        dict_all = {'sos': sos_dict, 'eos': eos_dict, 'LAI3g_late': lai3g_late_dict}
+        df = T.spatial_dics_to_df(dict_all)
+        df = green_driver_trend_contribution.Build_dataframe().add_GLC_landcover_data_to_df(df)
+        df = green_driver_trend_contribution.Build_dataframe().add_NDVI_mask(df)
+        df = T.add_lon_lat_to_df(df)
+        df = self.add_early_peak_mean_to_df(df)
+        df = df[df['NDVI_MASK'] == 1]
+        df = df[df['landcover_GLC'] != 'Crop']
+        df = df[df['lat'] >= 30]
+
+        # landcover_GLC_list = T.get_df_unique_val_list(df,'landcover_GLC')
+        # print(landcover_GLC_list)
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif=land_tif)
+        # plt.show()
+        late_lai_list_enhanced = []
+        late_lai_list_low = []
+        for i, row in df.iterrows():
+            # sos_list = row['sos']
+            # eos_list = row['eos']
+            early_peak_mean = row['early_peak_mean']
+            late_lai = row['LAI3g_late']
+
+            # exit()
+            if type(early_peak_mean) == float:
+                continue
+            if type(late_lai) == float:
+                continue
+            # print(len(early_peak_mean))
+            # print(len(late_lai))
+            if not len(early_peak_mean) == len(late_lai):
+                continue
+
+            enhanced_early_peak_mean = []
+            low_early_peak_mean = []
+            for j in range(len(early_peak_mean)):
+                if early_peak_mean[j] > 0:
+                    enhanced_early_peak_mean.append(j)
+                else:
+                    low_early_peak_mean.append(j)
+
+            for j in enhanced_early_peak_mean:
+                # if late_lai[j] > 0:  # late lai greater than 0
+                late_lai_list_enhanced.append(late_lai[j])
+            for j in low_early_peak_mean:
+                late_lai_list_low.append(late_lai[j])
+        plt.hist(late_lai_list_enhanced, bins=200, alpha=0.5, label='enhanced', density=True)
+        plt.hist(late_lai_list_low, bins=200, alpha=0.5, label='low', density=True)
+        plt.legend()
+        plt.show()
+
+
+    def eos_pdf(self):
+        # fdir = '/Volumes/NVME2T/greening_project_redo/Result/carryover_ML/lai3g_pheno'
+        fdir = join(results_root, 'carryover_ML/lai3g_pheno')
+        sos_f = join(fdir, 'early_start.npy')
+        eos_f = join(fdir, 'late_end.npy')
+        lai3g_late_dir = join(results_root, 'carryover_ML/Detrend_pick_seasonal/LAI3g/anomaly_detrend/late')
+        sos_dict = T.load_npy(sos_f)
+        eos_dict = T.load_npy(eos_f)
+        lai3g_late_dict = T.load_npy_dir(lai3g_late_dir)
+        dict_all = {'sos': sos_dict, 'eos': eos_dict, 'LAI3g_late': lai3g_late_dict}
+        df = T.spatial_dics_to_df(dict_all)
+        df = green_driver_trend_contribution.Build_dataframe().add_GLC_landcover_data_to_df(df)
+        df = green_driver_trend_contribution.Build_dataframe().add_NDVI_mask(df)
+        df = T.add_lon_lat_to_df(df)
+        df = self.add_early_peak_mean_to_df(df)
+        df = df[df['NDVI_MASK'] == 1]
+        df = df[df['landcover_GLC'] != 'Crop']
+        df = df[df['lat'] >= 30]
+
+        # landcover_GLC_list = T.get_df_unique_val_list(df,'landcover_GLC')
+        # print(landcover_GLC_list)
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif=land_tif)
+        # plt.show()
+        late_lai_list_enhanced = []
+        late_lai_list_low = []
+        for i, row in df.iterrows():
+            # sos_list = row['sos']
+            # eos_list = row['eos']
+            early_peak_mean = row['early_peak_mean']
+            eos = row['eos']
+
+            # exit()
+            if type(early_peak_mean) == float:
+                continue
+            if type(eos) == float:
+                continue
+            # print(len(early_peak_mean))
+            # print(len(late_lai))
+            if not len(early_peak_mean) == len(eos):
+                continue
+            eos_mean = np.mean(eos)
+            eos_anomaly = []
+            for j in range(len(eos)):
+                eos_anomaly.append(eos[j] - eos_mean)
+            enhanced_early_peak_mean = []
+            low_early_peak_mean = []
+            for j in range(len(early_peak_mean)):
+                if early_peak_mean[j] > 0:
+                    enhanced_early_peak_mean.append(j)
+                else:
+                    low_early_peak_mean.append(j)
+
+            for j in enhanced_early_peak_mean:
+                # if late_lai[j] > 0:  # late lai greater than 0
+                late_lai_list_enhanced.append(eos_anomaly[j])
+            for j in low_early_peak_mean:
+                late_lai_list_low.append(eos_anomaly[j])
+        plt.hist(late_lai_list_enhanced, bins=200, alpha=0.5, label='enhanced', density=True,range=(-40,40))
+        plt.hist(late_lai_list_low, bins=200, alpha=0.5, label='low', density=True,range=(-40,40))
+        plt.legend()
+        plt.show()
 
     def eos_ratio_to_tif(self):
         outdir = join(self.this_class_arr, 'eos_ratio')
@@ -1239,8 +1668,8 @@ class Carryover_analysis:
 class Variables_analysis:
 
     def __init__(self):
-        self.this_class_arr = results_root + 'carryover_ML/Variables_analysis/'
-        T.mk_dir(self.this_class_arr, force=True)
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Variables_analysis',
+                                                                                       results_root)
         pass
 
     def run(self):
@@ -1249,7 +1678,8 @@ class Variables_analysis:
         # self.obs_x_and_y_response_function_matrix_PFTs()
         # self.x_variables_to_y_correlation()
         # self.eos_and_late_lai()
-        self.pdf()
+        self.eos_and_late_lai_lc()
+        # self.pdf()
         pass
 
 
@@ -1464,13 +1894,15 @@ class Variables_analysis:
 
         pass
 
-    def eos_and_late_lai(self):
+    def eos_and_late_lai_lc(self):
         # df = df[df['landcover_GLC']=='EF']
-        outdir = join(self.this_class_arr, 'eos_and_late_lai')
+        outdir = join(self.this_class_png, 'eos_and_late_lai_lc')
         T.mkdir(outdir,force=True)
-        dff = r'D:\Greening\Result\carryover_ML\Dataframe\detrended\data_frame.df'
+        T.open_path_and_file(outdir)
+        dff = Dataframe().dff
         df = T.load_df(dff)
         df = Dataframe().clean_df(df)
+        # df = df[df['LAI3g_early_peak_mean'] >= 0]
         lc_list = T.get_df_unique_val_list(df, 'landcover_GLC')
         for lc in lc_list:
             df_lc = df[df['landcover_GLC'] == lc]
@@ -1478,17 +1910,79 @@ class Variables_analysis:
             y = 'LAI3g_late'
             X = df_lc[x].values
             Y = df_lc[y].values
-            sns.jointplot(x=X, y=Y, kind="hex", color="#4CB391",gridsize=100,xlim=(-2,2),ylim=(-2,2))
+            sns.jointplot(x=X, y=Y, kind="hex", color="#4CB391",gridsize=100,xlim=(-3,3),ylim=(-3,3))
             plt.xlabel(x)
             plt.ylabel(y)
-            plt.title(lc)
-            plt.tight_layout()
             r,p = T.nan_correlation(X,Y)
-            outf = join(outdir,f'{lc}.pdf')
+            plt.title(f'{lc} r={r:.2f} p={p:.2f}')
+            plt.tight_layout()
+            outf = join(outdir,f'{lc}_not_pick.pdf')
             plt.savefig(outf)
             plt.close()
 
-        pass
+
+    def eos_and_late_lai(self):
+        fdir = join(data_root, 'lai3g_pheno')
+        sos_f = join(fdir, 'early_start.npy')
+        eos_f = join(fdir, 'late_end.npy')
+        lai3g_late_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr, 'pick_daily_seasonal/LAI3g/std_anomaly_detrend/late')
+        sos_dict = T.load_npy(sos_f)
+        eos_dict = T.load_npy(eos_f)
+        lai3g_late_dict = T.load_npy_dir(lai3g_late_dir)
+        dict_all = {'sos': sos_dict, 'eos': eos_dict, 'LAI3g_late': lai3g_late_dict}
+        df = T.spatial_dics_to_df(dict_all)
+        df = Dataframe().add_GLC_landcover_data_to_df(df)
+        df = Dataframe().add_NDVI_mask(df)
+        df = T.add_lon_lat_to_df(df)
+        df = Carryover_analysis().add_early_peak_mean_to_df(df)
+        df = df[df['NDVI_MASK'] == 1]
+        df = df[df['landcover_GLC'] != 'Crop']
+        df = df[df['lat'] >= 30]
+
+        late_lai_all = []
+        eos_all = []
+        for i, row in df.iterrows():
+            # sos_list = row['sos']
+            # eos_list = row['eos']
+            early_peak_mean = row['early_peak_mean']
+            eos = row['eos']
+            late_lai = row['LAI3g_late']
+
+            # exit()
+            if type(early_peak_mean) == float:
+                continue
+            if type(eos) == float:
+                continue
+            # print(len(early_peak_mean))
+            # print(len(late_lai))
+            if not len(early_peak_mean) == len(eos):
+                continue
+            eos_mean = np.nanmean(eos)
+            eos_std = np.nanstd(eos)
+            eos_anomaly = []
+            for j in range(len(eos)):
+                eos_anomaly.append((eos[j] - eos_mean) / eos_std)
+            enhanced_early_peak_mean = []
+            low_early_peak_mean = []
+            for j in range(len(early_peak_mean)):
+                if early_peak_mean[j] > 0:
+                    enhanced_early_peak_mean.append(j)
+                else:
+                    low_early_peak_mean.append(j)
+
+            for j in enhanced_early_peak_mean:
+                # if late_lai[j] > 0:  # late lai greater than 0
+                late_lai_all.append(late_lai[j])
+                eos_all.append(eos_anomaly[j])
+        # plt.scatter(eos_all, late_lai_all)
+        # KDE_plot().plot_scatter(late_lai_all, eos_all)
+        KDE_plot().plot_scatter_hex(late_lai_all, eos_all,xlim=(-3,3),ylim=(-3,3))
+        r, p = T.nan_correlation(late_lai_all, eos_all)
+        plt.xlabel('LAI3g_late')
+        plt.ylabel('eos_std_anomaly')
+        print(r, p)
+        plt.tight_layout()
+        plt.show()
 
     def pdf(self):
         dff = Dataframe().dff
@@ -1532,6 +2026,7 @@ class Detrend_variables:
         # self.LAI3g()
         # self.climate_variables()
         self.detrend_anomaly()
+        self.detrend_std_anomaly()
         pass
 
     def LAI3g(self):
@@ -1571,10 +2066,25 @@ class Detrend_variables:
             T.save_distributed_perpix_dic(detrend_var_dict,outdir_i,n=1000)
 
     def detrend_anomaly(self):
-        fdir = r'C:\Users\pcadmin\Desktop\Data\Detrend_pick_seasonal\\'
+        fdir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal')
         for var in T.listdir(fdir):
-            fdir_i = join(fdir,var,'anomaly_juping')
-            outdir_i = join(fdir,var,'anomaly_juping_detrend')
+            fdir_i = join(fdir,var,'anomaly')
+            outdir_i = join(fdir,var,'anomaly_detrend')
+            T.mk_dir(outdir_i,force=True)
+            for season in T.listdir(fdir_i):
+                print('loading',var,season)
+                fdir_i_i = join(fdir_i,season)
+                outdir_i_i = join(outdir_i,season)
+                T.mk_dir(outdir_i_i,force=True)
+                val_dict = T.load_npy_dir(fdir_i_i)
+                detrend_dict = T.detrend_dic(val_dict)
+                T.save_distributed_perpix_dic(detrend_dict,outdir_i_i)
+
+    def detrend_std_anomaly(self):
+        fdir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal')
+        for var in T.listdir(fdir):
+            fdir_i = join(fdir,var,'std_anomaly')
+            outdir_i = join(fdir,var,'std_anomaly_detrend')
             T.mk_dir(outdir_i,force=True)
             for season in T.listdir(fdir_i):
                 print('loading',var,season)
@@ -1586,19 +2096,18 @@ class Detrend_variables:
                 T.save_distributed_perpix_dic(detrend_dict,outdir_i_i)
 
 
-        pass
-
 
 class Pick_detrended_seasonal_variables:
     def __init__(self):
-
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Pick_detrended_seasonal_variables',
+                                                                                       results_root)
         pass
 
     def run(self):
-        # self.daily_phenology()
+        self.daily_phenology()
         # self.pick_seasonal_values()
         # self.calculate_anomaly()
-        self.calculate_anomaly_juping()
+        # self.calculate_anomaly_juping()
         pass
 
 
@@ -1740,24 +2249,202 @@ class Pick_detrended_seasonal_variables:
                 T.save_distributed_perpix_dic(anomaly_dict,outdir_i_i)
                 # exit()
 
-def file_paths():
-    r'''
-    1 x variables interpolated values
-    C:\Users\pcadmin\Desktop\Data\phenology_dic\LAI3g  # picked SOS, EOS average
-    E:\interpolation_climate_drivers_to_daily # daily interpolated values
-    D:\Greening\Result\detrend\detrend_anomaly\X_predictors # Wen detrended values
-    '''
 
-    pass
+class Pick_detrended_seasonal_variables_dynamic:
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Pick_detrended_seasonal_variables_dynamic',
+                                                                                       results_root)
+
+    def run(self):
+        # self.daily_phenology()
+        # self.pick_daily_seasonal()
+        # self.check_seasonal_values()
+        self.calculate_anomaly()
+        self.calculate_std_anomaly()
+        pass
+
+    def daily_phenology(self):
+        phenology_dir = join(data_root,'lai3g_pheno')
+
+        early_start_f = join(phenology_dir, 'early_start.npy')
+        early_end_f = join(phenology_dir, 'early_end.npy')
+        late_start_f = join(phenology_dir, 'late_start.npy')
+        late_end_f = join(phenology_dir, 'late_end.npy')
+
+        early_start_dict = T.load_npy(early_start_f)
+        early_end_dict = T.load_npy(early_end_f)
+        late_start_dict = T.load_npy(late_start_f)
+        late_end_dict = T.load_npy(late_end_f)
+
+        early_dict = {}
+        peak_dict = {}
+        late_dict = {}
+
+        for pix in tqdm(early_start_dict):
+            early_start = early_start_dict[pix]
+            early_end = early_end_dict[pix]
+            late_start = late_start_dict[pix]
+            late_end = late_end_dict[pix]
+            early_range_all_years = []
+            peak_range_all_years = []
+            late_range_all_years = []
+            for i in range(len(early_start)):
+                early_start_i = early_start[i]
+                early_end_i = early_end[i]
+                late_start_i = late_start[i]
+                late_end_i = late_end[i]
+
+                early_range = (early_start_i,early_end_i)
+                peak_range = (early_end_i,late_start_i)
+                late_range = (late_start_i,late_end_i+1)
+
+                early_range_all_years.append(early_range)
+                peak_range_all_years.append(peak_range)
+                late_range_all_years.append(late_range)
+            early_dict[pix] = early_range_all_years
+            peak_dict[pix] = peak_range_all_years
+            late_dict[pix] = late_range_all_years
+        return early_dict,peak_dict,late_dict
+
+
+    def longterm_phenology(self,all_years_pheno):
+
+        start_list = []
+        end_list = []
+        for start,end in all_years_pheno:
+            start_list.append(start)
+            end_list.append(end)
+        mean_start = np.nanmean(start_list)
+        mean_end = np.nanmean(end_list)
+        return (int(mean_start),int(mean_end))
+
+
+    def pick_daily_seasonal(self):
+        fdir = join(data_root,'daily_X')
+        outdir = join(self.this_class_arr,'pick_daily_seasonal')
+        T.mk_dir(outdir,force=True)
+        early_dict, peak_dict, late_dict = self.daily_phenology()
+
+        for folder in T.listdir(fdir):
+            print('loading',folder)
+            outdir_i = join(outdir,folder,'origin')
+            T.mk_dir(outdir_i,force=True)
+            vals_dict = T.load_npy_dir(join(fdir,folder),condition='')
+            early_vals_dict = {}
+            peak_vals_dict = {}
+            late_vals_dict = {}
+            for pix in tqdm(vals_dict):
+                vals_list = vals_dict[pix]
+                if not pix in early_dict:
+                    continue
+                early_all_years = early_dict[pix]
+                peak_all_years = peak_dict[pix]
+                late_all_years = late_dict[pix]
+
+                early_vals_list = []
+                peak_vals_list = []
+                late_vals_list = []
+                for i,vals in enumerate(vals_list):
+                    if i >= len(early_all_years):
+                        # continue
+                        early_range = self.longterm_phenology(early_all_years)
+                        peak_range = self.longterm_phenology(peak_all_years)
+                        late_range = self.longterm_phenology(late_all_years)
+                    else:
+                        early_range = early_all_years[i]
+                        peak_range = peak_all_years[i]
+                        late_range = late_all_years[i]
+                    early = list(range(early_range[0],early_range[1]))
+                    peak = list(range(peak_range[0],peak_range[1]))
+                    late = list(range(late_range[0],late_range[1]))
+                    early_vals = T.pick_vals_from_1darray(vals,early)
+                    peak_vals = T.pick_vals_from_1darray(vals,peak)
+                    late_vals = T.pick_vals_from_1darray(vals,late)
+
+                    early_mean = np.nanmean(early_vals)
+                    peak_mean = np.nanmean(peak_vals)
+                    late_mean = np.nanmean(late_vals)
+
+                    early_vals_list.append(early_mean)
+                    peak_vals_list.append(peak_mean)
+                    late_vals_list.append(late_mean)
+                early_vals_list = np.array(early_vals_list)
+                peak_vals_list = np.array(peak_vals_list)
+                late_vals_list = np.array(late_vals_list)
+
+                early_vals_dict[pix] = early_vals_list
+                peak_vals_dict[pix] = peak_vals_list
+                late_vals_dict[pix] = late_vals_list
+            early_outdir_i = join(outdir_i,'early')
+            peak_outdir_i = join(outdir_i,'peak')
+            late_outdir_i = join(outdir_i,'late')
+            T.mk_dir(early_outdir_i,force=True)
+            T.mk_dir(peak_outdir_i,force=True)
+            T.mk_dir(late_outdir_i,force=True)
+            T.save_distributed_perpix_dic(early_vals_dict,early_outdir_i)
+            T.save_distributed_perpix_dic(peak_vals_dict,peak_outdir_i)
+            T.save_distributed_perpix_dic(late_vals_dict,late_outdir_i)
+            # exit()
+
+        pass
+
+    def calculate_anomaly(self):
+        fdir = join(self.this_class_arr,'pick_daily_seasonal')
+        for var_i in T.listdir(fdir):
+            fdir_i = join(fdir,var_i,'origin')
+            outdir_i = join(fdir,var_i,'anomaly')
+            for season_i in T.listdir(fdir_i):
+                fdir_i_i = join(fdir_i,season_i)
+                outdir_i_i = join(outdir_i,season_i)
+                T.mk_dir(outdir_i_i,force=True)
+                vals_dict = T.load_npy_dir(fdir_i_i)
+                anomaly_dict = {}
+                for pix in tqdm(vals_dict):
+                    vals = vals_dict[pix]
+                    mean = np.nanmean(vals)
+                    std = np.nanstd(vals)
+                    anomaly = vals-mean
+                    anomaly_dict[pix] = anomaly
+                T.save_distributed_perpix_dic(anomaly_dict,outdir_i_i)
+
+    def calculate_std_anomaly(self):
+        fdir = join(self.this_class_arr,'pick_daily_seasonal')
+        for var_i in T.listdir(fdir):
+            fdir_i = join(fdir,var_i,'origin')
+            outdir_i = join(fdir,var_i,'std_anomaly')
+            for season_i in T.listdir(fdir_i):
+                fdir_i_i = join(fdir_i,season_i)
+                outdir_i_i = join(outdir_i,season_i)
+                T.mk_dir(outdir_i_i,force=True)
+                vals_dict = T.load_npy_dir(fdir_i_i)
+                anomaly_dict = {}
+                for pix in tqdm(vals_dict):
+                    vals = vals_dict[pix]
+                    mean = np.nanmean(vals)
+                    std = np.nanstd(vals)
+                    anomaly = (vals-mean)/std
+                    anomaly_dict[pix] = anomaly
+                T.save_distributed_perpix_dic(anomaly_dict,outdir_i_i)
+                # exit()
+
+
+    def check_seasonal_values(self):
+        fdir = join(self.this_class_arr,'pick_daily_seasonal','CCI_SM','early')
+        vals_dict = T.load_npy_dir(fdir)
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr_mean(vals_dict)
+        plt.imshow(arr)
+        plt.show()
 
 
 def main():
     # Dataframe().run()
-    RF().run()
-    # Carryover_analysis().run()
+    # RF().run()
+    # Carryover_calculation().run()
+    Carryover_analysis().run()
     # Variables_analysis().run()
     # Detrend_variables().run()
     # Pick_detrended_seasonal_variables().run()
+    # Pick_detrended_seasonal_variables_dynamic().run()
     pass
 
 if __name__ == '__main__':
