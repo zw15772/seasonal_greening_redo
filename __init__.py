@@ -62,16 +62,14 @@ import scipy.io
 from scipy.stats import kruskal
 import pingouin as pg
 import psutil
-
+import plotly.graph_objs as go
 
 # this_root = '/Volumes/SSD_sumsang/project_greening/'
-this_root = '/Volumes/NVME2T/greening_project_redo/'
+this_root = '/Volumes/SSD1T/greening_project_redo1/'
 # this_root = '/Volumes/SSD_sumsang/project_greening_redo/'
 data_root = this_root + 'Data/'
-results_root = this_root + 'Result/'
+results_root = this_root + 'result/'
 temporary_root = this_root + 'temporary/'
-# results_root_main_flow = this_root + 'main_flow_results/'
-# from LY_Tools import *
 
 '''
 pip install xgboost
