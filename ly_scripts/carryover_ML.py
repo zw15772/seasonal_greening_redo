@@ -13,6 +13,7 @@ class Dataframe:
                                                                                        results_root)
         # self.mode = 'anomaly_detrend'
         self.mode = 'std_anomaly_detrend'
+        # self.mode = 'origin' #todo: add origin values, different landcover
         outdir = join(self.this_class_arr,'Dynamic_pheno',self.mode)
         T.mk_dir(outdir,force=True)
         self.dff = join(outdir, 'data_frame.df')
@@ -22,14 +23,15 @@ class Dataframe:
         df = self.__gen_df_init()
         # df = self.add_carryover(df)
         df = self.add_variables2()
-        df = self.add_sos_eos(df)
-        df = self.add_GLC_landcover_data_to_df(df)
-        df = self.add_NDVI_mask(df)
-        df = self.add_Koppen_data_to_df(df)
-        df = self.add_AI_to_df(df)
-        df = T.add_lon_lat_to_df(df, DIC_and_TIF())
-        df = self.add_early_peak_lai(df)
-
+        # df = self.add_sos_eos(df)
+        # df = self.add_GLC_landcover_data_to_df(df)
+        # df = self.add_NDVI_mask(df)
+        # df = self.add_Koppen_data_to_df(df)
+        # df = self.add_AI_to_df(df)
+        # df = T.add_lon_lat_to_df(df, DIC_and_TIF())
+        # df = self.add_early_peak_lai(df)
+        # df = self.add_early_peak_lai_anomaly(df)
+        df = self.add_late_lai_anomaly(df)
 
         T.save_df(df, self.dff)
         T.df_to_excel(df, self.dff)
@@ -283,6 +285,62 @@ class Dataframe:
 
         return df
 
+
+    def add_late_lai_anomaly(self, df):
+        fdir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr, 'pick_daily_seasonal')
+        var_mode = 'std_anomaly_detrend'
+        late_fdir = join(fdir, 'LAI3g', var_mode, 'late')
+        late_dict = T.load_npy_dir(late_fdir)
+        vals_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            year = row['year']
+            index = year - global_start_year
+            if not pix in late_dict:
+                vals_list.append(np.nan)
+                continue
+            vals = late_dict[pix]
+            if index >= len(vals):
+                vals_list.append(np.nan)
+                continue
+            val = vals[index]
+            vals_list.append(val)
+        df['LAI3g_late_anomaly'] = vals_list
+        return df
+
+    def add_early_peak_lai_anomaly(self, df):
+        fdir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr, 'pick_daily_seasonal')
+        var_mode = 'std_anomaly_detrend'
+        data_dict = {}
+        col_list = []
+
+        early_fdir = join(fdir, 'LAI3g', var_mode, 'early')
+        peak_fdir = join(fdir, 'LAI3g', var_mode, 'peak')
+        early_dict = T.load_npy_dir(early_fdir)
+        peak_dict = T.load_npy_dir(peak_fdir)
+        early_peak_dict = {}
+        for pix in tqdm(early_dict):
+            early = early_dict[pix]
+            peak = peak_dict[pix]
+            early_peak_mean = (early + peak) / 2
+            early_peak_dict[pix] = early_peak_mean
+        vals_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            year = row['year']
+            index = year - global_start_year
+            if not pix in early_peak_dict:
+                vals_list.append(np.nan)
+                continue
+            vals = early_peak_dict[pix]
+            if index >= len(vals):
+                vals_list.append(np.nan)
+                continue
+            val = vals[index]
+            vals_list.append(val)
+        df['LAI3g_early_peak_mean_anomaly'] = vals_list
+        return df
+
     def add_GLC_landcover_data_to_df(self, df):
 
         f = join(data_root,'Base_data/LC_reclass2.npy')
@@ -379,6 +437,132 @@ class Dataframe:
         vals[vals < down] = np.nan
         return vals
 
+class Dataframe_One_pix:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Dataframe_One_pix',
+                                                                                       results_root)
+        # self.mode = 'anomaly_detrend'
+        self.mode = 'std_anomaly_detrend'
+        # self.mode = 'origin'
+        outdir = join(self.this_class_arr, 'Dynamic_pheno', self.mode)
+        T.mk_dir(outdir, force=True)
+        self.dff = join(outdir, 'data_frame.df')
+        pass
+
+    def run(self):
+        df = self.__gen_df_init()
+
+        # df = self.add_variables()
+        # df = self.add_sos_eos(df)
+        # df = T.add_lon_lat_to_df(df, DIC_and_TIF())
+        # df = Dataframe().add_GLC_landcover_data_to_df(df)
+        # df = Dataframe().add_NDVI_mask(df)
+        # df = Dataframe().add_Koppen_data_to_df(df)
+        # df = Dataframe().add_AI_to_df(df)
+        df = self.add_early_peak_lai(df)
+        # df = self.add_early_peak_lai_anomaly(df)
+        # df = self.add_late_lai_anomaly(df)
+        T.save_df(df, self.dff)
+        T.df_to_excel(df, self.dff)
+        pass
+
+
+    def __load_df(self):
+        dff = self.dff
+        df = T.load_df(dff)
+
+        return df,dff
+        # return df_early,dff
+
+
+    def __gen_df_init(self):
+        df = pd.DataFrame()
+        if not os.path.isfile(self.dff):
+            T.save_df(df, self.dff)
+            return df
+        else:
+            df, dff = self.__load_df()
+            return df
+
+    def add_variables(self):
+        var_mode = self.mode
+        fdir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal')
+        period_list = ['early','peak','late']
+
+        data_dict = {}
+        col_list = []
+
+        for var in T.listdir(fdir):
+            print(var)
+            for period in period_list:
+                fdir_i = join(fdir,var,var_mode,period)
+                dict_i = T.load_npy_dir(fdir_i)
+                col_name = f'{var}_{period}'
+                col_list.append(col_name)
+                data_dict[col_name] = dict_i
+        df = T.spatial_dics_to_df(data_dict)
+        return df
+    def add_sos_eos(self,df):
+        fdir = join(data_root,'lai3g_pheno')
+        sos_f = join(fdir,'early_start.npy')
+        eos_f = join(fdir,'late_end.npy')
+        sos_dict = T.load_npy(sos_f)
+        eos_dict = T.load_npy(eos_f)
+        result_dict = {}
+        for pix in tqdm(sos_dict):
+            sos = sos_dict[pix]
+            eos = eos_dict[pix]
+            sos_mean = np.nanmean(sos)
+            eos_mean = np.nanmean(eos)
+            sos_std = np.nanstd(sos)
+            eos_std = np.nanstd(eos)
+            sos_anomaly = sos - sos_mean
+            eos_anomaly = eos - eos_mean
+            sos_std_anomaly = sos_anomaly / sos_std
+            eos_std_anomaly = eos_anomaly / eos_std
+            result_dict_i = {
+                             'sos_std_anomaly':sos_std_anomaly,'eos_std_anomaly':eos_std_anomaly,
+                             'sos_anomaly':sos_anomaly,'eos_anomaly':eos_anomaly,'sos':sos,'eos':eos,}
+            result_dict[pix] = result_dict_i
+        df_pheno = T.dic_to_df(result_dict,'pix')
+        df = T.join_df_list(df,[df_pheno],'pix')
+
+        return df
+
+    def add_early_peak_lai_anomaly(self, df):
+        fdir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr, 'pick_daily_seasonal')
+        var_mode = 'std_anomaly_detrend'
+        data_dict = {}
+        col_list = []
+
+        early_fdir = join(fdir, 'LAI3g', var_mode, 'early')
+        peak_fdir = join(fdir, 'LAI3g', var_mode, 'peak')
+        early_dict = T.load_npy_dir(early_fdir)
+        peak_dict = T.load_npy_dir(peak_fdir)
+        early_peak_dict = {}
+        for pix in tqdm(early_dict):
+            early = early_dict[pix]
+            peak = peak_dict[pix]
+            early_peak_mean = (early + peak) / 2
+            early_peak_dict[pix] = early_peak_mean
+        vals_list = []
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            pix = row['pix']
+            year = row['year']
+            index = year - global_start_year
+            if not pix in early_peak_dict:
+                vals_list.append(np.nan)
+                continue
+            vals = early_peak_dict[pix]
+            if index >= len(vals):
+                vals_list.append(np.nan)
+                continue
+            val = vals[index]
+            vals_list.append(val)
+        df['LAI3g_early_peak_mean_anomaly'] = vals_list
+        return df
+
 class RF:
     def __init__(self):
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('RF',
@@ -451,8 +635,9 @@ class RF:
 
     def y_variable(self):
         # y = 'carryover'
-        # y = 'LAI3g_late'
-        y = 'eos_anomaly'
+        y = 'LAI3g_late'
+        # y = 'LAI3g_late_anomaly'
+        # y = 'eos_anomaly'
         # y = 'eos_std_anomaly'
         # y = 'detrend_LAI3g_late_anomaly'
         return y
@@ -1674,12 +1859,16 @@ class Variables_analysis:
 
     def run(self):
         # self.obs_x_and_y_response_function()
+        # self.obs_x_and_y_response_function_bin_y()
+        # self.obs_x_and_y_response_function_bin_y_lc()
         # self.obs_x_and_y_response_function_matrix()
         # self.obs_x_and_y_response_function_matrix_PFTs()
         # self.x_variables_to_y_correlation()
         # self.eos_and_late_lai()
-        self.eos_and_late_lai_lc()
+        # self.eos_and_late_lai_lc()
         # self.pdf()
+        self.relative_timeseries_one_pix()
+        # self.relative_timeseries_all_pix()
         pass
 
 
@@ -1691,40 +1880,53 @@ class Variables_analysis:
         df = df[df['LAI3g_early_peak_mean'] >= 0]
         x_variables_list = RF().x_variables()
         y = RF().y_variable()
-        x_bins = np.linspace(-3, 3, n)
         lc_list = T.get_df_unique_val_list(df, 'landcover_GLC')
+        # T.print_head_n(df, 5)
+        # exit()
 
         # for lc in lc_list:
         flag = 1
         # df_lc = df[df['landcover_GLC'] == lc]
         plt.figure(figsize=(12, 8))
         for x in x_variables_list:
+            x_bins = np.linspace(df[x].min(), df[x].max(), n)
             df_group, bin_names = T.df_bin(df, x, x_bins)
             mean_list = []
             std_list = []
+            vals_count_list = []
             for name, df_group_i in df_group:
                 Y = df_group_i[y].values
-                greater_than_zero = Y > 0
+                if len(Y) == 0:
+                    mean_list.append(np.nan)
+                    std_list.append(np.nan)
+                    vals_count_list.append(np.nan)
+                    continue
+                greater_than_zero = Y < 0
                 Y = Y[greater_than_zero]
-                Y_mean = len(Y) / len(df_group_i)
+                # Y_mean = len(Y) / len(df_group_i)
+                count = len(Y)
+                vals_count_list.append(count/len(df))
                 # exit()
-                # Y_mean = np.nanmean(Y)
-                Y_std = np.nanstd(Y)
+                Y_mean = np.nanmean(Y)
+                # Y_std = np.nanstd(Y)
                 # Y_std,_,_ = T.uncertainty_err(Y)
                 mean_list.append(Y_mean)
-                std_list.append(Y_std)
+                # std_list.append(Y_std)
             mean_list = np.array(mean_list)
             std_list = np.array(std_list)
             plt.subplot(3, 3, flag)
             # Plot().plot_line_with_error_bar(x_bins[1:], mean_list, std_list)
             # Plot().plot_line_with_gradient_error_band(x_bins[1:], mean_list, std_list,pow=8,color_gradient_n=500)
             plt.plot(x_bins[1:], mean_list, '--', color='r')
-            # plt.ylim(min(mean_list) - 0.2, max(mean_list) + 0.2)
-            plt.ylim(0, 1)
-            # plt.title(x)
-            plt.xticks(rotation=90)
             plt.xlabel(x)
             plt.ylabel(y)
+            plt.twinx()
+            plt.bar(x_bins[1:], vals_count_list, width=0.1, color='b', alpha=0.5)
+            # plt.ylim(min(mean_list) - 0.2, max(mean_list) + 0.2)
+            # plt.ylim(0, 1)
+            # plt.title(x)
+            # plt.xticks(rotation=90)
+
             # plt.hlines(0, -3, 3, linestyles='--', colors='k')
             # plt.vlines(0, min(mean_list) - 0.2, max(mean_list) + 0.2, linestyles='--', colors='k')
             flag += 1
@@ -1732,7 +1934,146 @@ class Variables_analysis:
         # plt.suptitle(lc)
         plt.show()
 
+    def obs_x_and_y_response_function_bin_y(self):
+        outdir = join(self.this_class_png, 'obs_x_and_y_response_function_bin_y')
+        T.mk_dir(outdir, force=True)
+        n = 41
+        dff = Dataframe().dff
+        df = T.load_df(dff)
+        df = Dataframe().clean_df(df)
+        df = df[df['LAI3g_early_peak_mean_anomaly'] >= 0]
+        x_variables_list = RF().x_variables()
+        y = RF().y_variable()
+        flag = 1
+        plt.figure(figsize=(12, 8))
+        for x in x_variables_list:
+            y_bins = np.linspace(df[y].min(), df[y].max(), n)
+            df_group, bin_names = T.df_bin(df, y, y_bins)
+            mean_list = []
+            std_list = []
+            vals_count_list = []
+            for name, df_group_i in df_group:
+                X = df_group_i[x].values
+                if len(X) == 0:
+                    mean_list.append(np.nan)
+                    std_list.append(np.nan)
+                    vals_count_list.append(np.nan)
+                    continue
+                # greater_than_zero = Y < 0
+                # Y = Y[greater_than_zero]
+                # Y_mean = len(Y) / len(df_group_i)
+                count = len(X)
+                vals_count_list.append(count/len(df))
+                # exit()
+                X_mean = np.nanmean(X)
+                # Y_std = np.nanstd(Y)
+                X_std,_,_ = T.uncertainty_err(X)
+                mean_list.append(X_mean)
+                std_list.append(X_std)
+            mean_list = np.array(mean_list)
+            std_list = np.array(std_list)
+            plt.subplot(3, 3, flag)
+            Plot().plot_line_with_error_bar(y_bins[1:], mean_list, std_list)
+            # Plot().plot_line_with_gradient_error_band(x_bins[1:], mean_list, std_list,pow=8,color_gradient_n=500)
+            plt.plot(y_bins[1:], mean_list, '--', color='r')
+            # plt.hlines(0, df[y].min(), df[y].max(), linestyles='--', colors='k')
+            plt.vlines(0, np.nanmin(mean_list), np.nanmax(mean_list), linestyles='--', colors='k')
+            plt.xlabel(y)
+            plt.ylabel(x)
+            plt.ylim(np.nanmin(mean_list), np.nanmax(mean_list))
+            plt.twinx()
+            plt.bar(y_bins[1:], vals_count_list, color='b', alpha=0.3, width=(df[y].max() - df[y].min()) / (1.5 * n))
+            # plt.ylim(min(mean_list) - 0.2, max(mean_list) + 0.2)
+            # plt.ylim(0, 1)
+            # plt.title(x)
+            # plt.xticks(rotation=90)
+
+            # plt.hlines(0, -3, 3, linestyles='--', colors='k')
+            # plt.vlines(0, min(mean_list) - 0.2, max(mean_list) + 0.2, linestyles='--', colors='k')
+            flag += 1
+        plt.tight_layout()
+        # plt.suptitle(lc)
+        outf = join(outdir, 'pdf.pdf')
+        plt.savefig(outf)
+        plt.close()
+        # plt.show()
+
         pass
+
+    def obs_x_and_y_response_function_bin_y_lc(self):
+        lc_var = 'koppen'
+        # lc_var = 'landcover_GLC'
+        outdir = join(self.this_class_png,'obs_x_and_y_response_function_bin_y_lc',lc_var)
+        T.mk_dir(outdir,force=True)
+        T.open_path_and_file(outdir)
+        n = 41
+        dff = Dataframe().dff
+        df = T.load_df(dff)
+        df = Dataframe().clean_df(df)
+        df = df[df['LAI3g_early_peak_mean_anomaly'] >= 0]
+        x_variables_list = RF().x_variables()
+        y = RF().y_variable()
+        lc_list = T.get_df_unique_val_list(df, lc_var)
+
+        for lc in lc_list:
+            flag = 1
+            df_lc = df[df[lc_var] == lc]
+            df_len = len(df_lc)
+            plt.figure(figsize=(12, 8))
+            for x in x_variables_list:
+                y_bins = np.linspace(df_lc[y].min(), df_lc[y].max(), n)
+                df_group, bin_names = T.df_bin(df_lc, y, y_bins)
+                mean_list = []
+                std_list = []
+                vals_count_list = []
+                for name, df_group_i in df_group:
+                    X = df_group_i[x].values
+                    if len(X) == 0:
+                        mean_list.append(np.nan)
+                        std_list.append(np.nan)
+                        vals_count_list.append(np.nan)
+                        continue
+                    # greater_than_zero = Y < 0
+                    # Y = Y[greater_than_zero]
+                    # Y_mean = len(Y) / len(df_group_i)
+                    count = len(X)
+                    vals_count_list.append(count/len(df_lc))
+                    # exit()
+                    X_mean = np.nanmean(X)
+                    # Y_std = np.nanstd(Y)
+                    X_std,_,_ = T.uncertainty_err(X)
+                    mean_list.append(X_mean)
+                    std_list.append(X_std)
+                mean_list = np.array(mean_list)
+                std_list = np.array(std_list)
+                plt.subplot(3, 3, flag)
+                Plot().plot_line_with_error_bar(y_bins[1:], mean_list, std_list)
+                # Plot().plot_line_with_gradient_error_band(x_bins[1:], mean_list, std_list,pow=8,color_gradient_n=500)
+                plt.plot(y_bins[1:], mean_list, '--', color='r')
+                # plt.hlines(0, df[y].min(), df[y].max(), linestyles='--', colors='k')
+                plt.vlines(0, np.nanmin(mean_list), np.nanmax(mean_list), linestyles='--', colors='k')
+                plt.xlabel(y)
+                plt.ylabel(x)
+                plt.ylim(np.nanmin(mean_list), np.nanmax(mean_list))
+                plt.twinx()
+                plt.bar(y_bins[1:], vals_count_list, color='b', alpha=0.3, width=(df_lc[y].max() - df_lc[y].min()) / (1.5 * n))
+                # plt.ylim(min(mean_list) - 0.2, max(mean_list) + 0.2)
+                # plt.ylim(0, 1)
+                # plt.title(x)
+                # plt.xticks(rotation=90)
+
+                # plt.hlines(0, -3, 3, linestyles='--', colors='k')
+                # plt.vlines(0, min(mean_list) - 0.2, max(mean_list) + 0.2, linestyles='--', colors='k')
+                flag += 1
+            plt.suptitle(f'{lc} df_len:{df_len}')
+            plt.tight_layout()
+            outf = join(outdir, lc + '.pdf')
+            plt.savefig(outf)
+            plt.close()
+        # plt.show()
+
+        pass
+
     def obs_x_and_y_response_function_matrix(self):
         outdir = join(self.this_class_arr, 'obs_x_and_y_response_function_matrix')
         T.mkdir(outdir,force=True)
@@ -2014,7 +2355,77 @@ class Variables_analysis:
             plt.show()
 
 
+    def relative_timeseries_one_pix(self):
+        dff = Dataframe().dff
+        df = T.load_df(dff)
+        T.print_head_n(df, 5)
+        pix_list = T.get_df_unique_val_list(df, 'pix')
+        picked_pix = []
+        for pix in pix_list:
+            r,c = pix
+            if r<80:
+                continue
+            picked_pix.append(pix)
+        for pix in tqdm(picked_pix):
+            df_pix = df[df['pix'] == pix]
+            lon = df_pix['lon'].values[0]
+            lat = df_pix['lat'].values[0]
+            glc = df_pix['landcover_GLC'].values[0]
+            koppen = df_pix['koppen'].values[0]
+            print(pix, lon, lat)
+
+            if lat > 60:
+                continue
+            df_pix = df_pix.sort_values(by=['year'])
+            pick_index = df_pix['LAI3g_early_peak_mean']< -0.5
+            pick_index_1 = df_pix['LAI3g_early_peak_mean']> 0.5
+            pick_index2 = df_pix['LAI3g_late']< -0.5
+            pick_index3 = df_pix['LAI3g_late']> 0.5
+            pick_index4 = df_pix['SPEI3_peak']< -1.5
+            pick_index5 = df_pix['SPEI3_late']< -1.5
+            df_pix['LAI3g_early_peak_mean1'] = np.nan
+            df_pix['LAI3g_early_peak_mean1'][pick_index] = -9999
+            df_pix['LAI3g_early_peak_mean1'][pick_index_1] = 9999
+            df_pix['LAI3g_late1'] = np.nan
+            df_pix['LAI3g_late1'][pick_index2] = -9999
+            df_pix['LAI3g_late1'][pick_index3] = 9999
+            # df_pix['SPEI3_peak1'] = np.nan
+            # df_pix['SPEI3_late1'] = np.nan
+            df_pix['SPEI3_peak'][pick_index4] = -9999
+            df_pix['SPEI3_late'][pick_index5] = -9999
+            x_list = RF().x_variables()
+            x_list.append('LAI3g_early_peak_mean1')
+            x_list.append('LAI3g_late')
+            x_list.append('LAI3g_late1')
+            # x_list.append('SPEI3_peak1')
+            # x_list.append('SPEI3_late1')
+            X = df_pix[x_list].values
+            df_i = pd.DataFrame(X, columns=x_list)
+            # plt.plot(Y, label='LAI3g_lai')
+            plt.figure(figsize=(14, 7))
+            plt.imshow(df_i.T, aspect='auto', cmap='RdBu',vmin=-4,vmax=4)
+            plt.colorbar()
+            plt.yticks(range(len(x_list)), x_list)
+            # plt.title('lon: {}, lat: {}'.format(lon, lat))
+            plt.title('lon: {}, lat: {}\nglc: {}, koppen: {}'.format(lon, lat, glc, koppen))
+            plt.tight_layout()
+            plt.show()
+
+    def relative_timeseries_all_pix(self):
+        mode = 'std_anomaly_detrend'
+        data_dir = Pick_detrended_seasonal_variables_dynamic().this_class_arr
+        data_dir = join(data_dir, 'pick_daily_seasonal')
+        x_list = RF().x_variables()
+        y = RF().y_variable()
+        all_variables = x_list.copy()
+        all_variables.append(y)
+
+        # for
+
+        print(all_variables)
+        exit()
         pass
+
 
 class Detrend_variables:
 
@@ -2438,10 +2849,11 @@ class Pick_detrended_seasonal_variables_dynamic:
 
 def main():
     # Dataframe().run()
+    # Dataframe_One_pix().run()
     # RF().run()
     # Carryover_calculation().run()
-    Carryover_analysis().run()
-    # Variables_analysis().run()
+    # Carryover_analysis().run()
+    Variables_analysis().run()
     # Detrend_variables().run()
     # Pick_detrended_seasonal_variables().run()
     # Pick_detrended_seasonal_variables_dynamic().run()
