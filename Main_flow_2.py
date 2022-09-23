@@ -8,6 +8,11 @@ global_season_dic = [
     'peak',
     'late',
 ]
+
+
+
+
+
 class Phenology:
 
     def __init__(self):
@@ -227,6 +232,58 @@ class Seasonal_variables:
             T.save_distributed_perpix_dic(peak_vals_dict,peak_outdir_i)
             T.save_distributed_perpix_dic(late_vals_dict,late_outdir_i)
 
+    def pick_seasonal_values_VODCAGPP(self):
+        fdir = join(data_root,'daily_X')
+        outdir = join(self.this_class_arr,'pick_seasonal_values')
+        T.mk_dir(outdir,force=True)
+        early_dict, peak_dict, late_dict = self.__daily_phenology()
+
+        for folder in T.listdir(fdir):
+            print('loading',folder)
+            outdir_i = join(outdir,folder,'origin')
+            T.mk_dir(outdir_i,force=True)
+            vals_dict = T.load_npy_dir(join(fdir,folder))
+            early_vals_dict = {}
+            peak_vals_dict = {}
+            late_vals_dict = {}
+            for pix in tqdm(vals_dict):
+                vals_list = vals_dict[pix]
+                if not pix in early_dict:
+                    continue
+                early = early_dict[pix]
+                peak = peak_dict[pix]
+                late = late_dict[pix]
+                early_vals_list = []
+                peak_vals_list = []
+                late_vals_list = []
+                for vals in vals_list:
+                    early_vals = T.pick_vals_from_1darray(vals,early)
+                    peak_vals = T.pick_vals_from_1darray(vals,peak)
+                    late_vals = T.pick_vals_from_1darray(vals,late)
+
+                    early_mean = np.nanmean(early_vals)
+                    peak_mean = np.nanmean(peak_vals)
+                    late_mean = np.nanmean(late_vals)
+
+                    early_vals_list.append(early_mean)
+                    peak_vals_list.append(peak_mean)
+                    late_vals_list.append(late_mean)
+                early_vals_list = np.array(early_vals_list)
+                peak_vals_list = np.array(peak_vals_list)
+                late_vals_list = np.array(late_vals_list)
+
+                early_vals_dict[pix] = early_vals_list
+                peak_vals_dict[pix] = peak_vals_list
+                late_vals_dict[pix] = late_vals_list
+            early_outdir_i = join(outdir_i,'early')
+            peak_outdir_i = join(outdir_i,'peak')
+            late_outdir_i = join(outdir_i,'late')
+            T.mk_dir(early_outdir_i,force=True)
+            T.mk_dir(peak_outdir_i,force=True)
+            T.mk_dir(late_outdir_i,force=True)
+            T.save_distributed_perpix_dic(early_vals_dict,early_outdir_i)
+            T.save_distributed_perpix_dic(peak_vals_dict,peak_outdir_i)
+            T.save_distributed_perpix_dic(late_vals_dict,late_outdir_i)
 
     def calculate_std_anomaly(self):
         fdir = join(self.this_class_arr,'pick_seasonal_values')
