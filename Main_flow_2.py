@@ -129,9 +129,11 @@ class Seasonal_variables:
         pass
 
     def run(self):
-        self.pick_seasonal_values()
-        self.calculate_anomaly()
-        self.calculate_std_anomaly()
+        # self.pick_seasonal_values()
+        # self.pick_seasonal_values_VODCAGPP()
+        self.pick_seasonal_values_VOD_AMSRU()
+        # self.calculate_anomaly()
+        # self.calculate_std_anomaly()
         pass
 
 
@@ -178,6 +180,16 @@ class Seasonal_variables:
             late_dict[pix] = late
         return early_dict,peak_dict,late_dict
 
+    def __date_list_to_DOY(self,date_list):
+        '''
+        :param date_list: list of datetime objects
+        :return:
+        '''
+        start_year = date_list[0].year
+        start_date = datetime.datetime(start_year, 1, 1)
+        date_delta = date_list - start_date + datetime.timedelta(days=1)
+        DOY = [date.days for date in date_delta]
+        return DOY
 
     def pick_seasonal_values(self):
         fdir = join(data_root,'daily_X')
@@ -233,61 +245,171 @@ class Seasonal_variables:
             T.save_distributed_perpix_dic(late_vals_dict,late_outdir_i)
 
     def pick_seasonal_values_VODCAGPP(self):
-        fdir = join(data_root,'daily_X')
+        folder = 'VODCA_GPP'
+        fdir = join(data_root,folder,'tif_05_per_pix')
         outdir = join(self.this_class_arr,'pick_seasonal_values')
+        date_list = np.load(join(data_root,folder,'date_obj_list.npy'),allow_pickle=True)
+        years_list = [date.year for date in date_list]
+        years_list_unique = list(set(years_list))
+        years_list_unique.sort()
         T.mk_dir(outdir,force=True)
         early_dict, peak_dict, late_dict = self.__daily_phenology()
 
-        for folder in T.listdir(fdir):
-            print('loading',folder)
-            outdir_i = join(outdir,folder,'origin')
-            T.mk_dir(outdir_i,force=True)
-            vals_dict = T.load_npy_dir(join(fdir,folder))
-            early_vals_dict = {}
-            peak_vals_dict = {}
-            late_vals_dict = {}
-            for pix in tqdm(vals_dict):
-                vals_list = vals_dict[pix]
+        print('loading',folder)
+        outdir_i = join(outdir,folder,'origin')
+        T.mk_dir(outdir_i,force=True)
+        vals_dict = T.load_npy_dir(fdir)
+        early_vals_dict = {}
+        peak_vals_dict = {}
+        late_vals_dict = {}
+        for pix in tqdm(vals_dict):
+            vals = vals_dict[pix]
+            if T.is_all_nan(vals):
+                continue
+            vals[vals < 0] = np.nan
+            vals[vals > 10] = np.nan
+            # plt.plot(date_list,vals)
+            # plt.scatter(date_list,vals)
+            # plt.show()
+            # print(vals)
+            # exit()
+            if not pix in early_dict:
+                continue
+            early = early_dict[pix]
+            peak = peak_dict[pix]
+            late = late_dict[pix]
+            early_vals_list = []
+            peak_vals_list = []
+            late_vals_list = []
+            for year in years_list_unique:
+                year_index = [i for i in range(len(years_list)) if years_list[i]==year]
+                date_this_year = date_list[year_index]
+                vals_this_year = vals[year_index]
+                DOY_this_year = self.__date_list_to_DOY(date_this_year)
+                early_intersect = T.intersect(DOY_this_year,early)
+                peak_intersect = T.intersect(DOY_this_year,peak)
+                late_intersect = T.intersect(DOY_this_year,late)
+
+                early_picked = [DOY_this_year.index(i) for i in early_intersect]
+                peak_picked = [DOY_this_year.index(i) for i in peak_intersect]
+                late_picked = [DOY_this_year.index(i) for i in late_intersect]
+
+                early_picked.sort()
+                peak_picked.sort()
+                late_picked.sort()
+
+                early_date_picked = [date_this_year[i] for i in early_picked]
+                peak_date_picked = [date_this_year[i] for i in peak_picked]
+                late_date_picked = [date_this_year[i] for i in late_picked]
+
+                early_vals_picked = [vals_this_year[i] for i in early_picked]
+                peak_vals_picked = [vals_this_year[i] for i in peak_picked]
+                late_vals_picked = [vals_this_year[i] for i in late_picked]
+
+                early_mean = np.nanmean(early_vals_picked)
+                peak_mean = np.nanmean(peak_vals_picked)
+                late_mean = np.nanmean(late_vals_picked)
+
+                early_vals_list.append(early_mean)
+                peak_vals_list.append(peak_mean)
+                late_vals_list.append(late_mean)
+            early_vals_list = np.array(early_vals_list)
+            peak_vals_list = np.array(peak_vals_list)
+            late_vals_list = np.array(late_vals_list)
+            early_vals_dict[pix] = early_vals_list
+            peak_vals_dict[pix] = peak_vals_list
+            late_vals_dict[pix] = late_vals_list
+        early_outdir_i = join(outdir_i,'early')
+        peak_outdir_i = join(outdir_i,'peak')
+        late_outdir_i = join(outdir_i,'late')
+        T.mk_dir(early_outdir_i,force=True)
+        T.mk_dir(peak_outdir_i,force=True)
+        T.mk_dir(late_outdir_i,force=True)
+        T.save_distributed_perpix_dic(early_vals_dict,early_outdir_i)
+        T.save_distributed_perpix_dic(peak_vals_dict,peak_outdir_i)
+        T.save_distributed_perpix_dic(late_vals_dict,late_outdir_i)
+
+    def pick_seasonal_values_VOD_AMSRU(self):
+        folder = 'AMSRU_VOD'
+        fdir = join(data_root,folder,'tif_per_pix')
+        outdir = join(self.this_class_arr,'pick_seasonal_values')
+        T.mk_dir(outdir,force=True)
+        early_dict, peak_dict, late_dict = self.__daily_phenology()
+        outdir_i = join(outdir,folder,'origin')
+        T.mk_dir(outdir_i,force=True)
+        early_vals_dict = {}
+        peak_vals_dict = {}
+        late_vals_dict = {}
+
+        for year in T.listdir(fdir):
+            fdir_year = join(fdir,year)
+            date_this_year = np.load(join(data_root, folder, f'dateobj/{year}.npy'), allow_pickle=True)
+            DOY_this_year = self.__date_list_to_DOY(date_this_year)
+            vals_dict_year = T.load_npy_dir(fdir_year,condition='')
+            for pix in tqdm(vals_dict_year,desc=year):
                 if not pix in early_dict:
                     continue
                 early = early_dict[pix]
                 peak = peak_dict[pix]
                 late = late_dict[pix]
-                early_vals_list = []
-                peak_vals_list = []
-                late_vals_list = []
-                for vals in vals_list:
-                    early_vals = T.pick_vals_from_1darray(vals,early)
-                    peak_vals = T.pick_vals_from_1darray(vals,peak)
-                    late_vals = T.pick_vals_from_1darray(vals,late)
+                vals_this_year = vals_dict_year[pix]
+                vals_this_year[vals_this_year < 0] = np.nan
+                if T.is_all_nan(vals_this_year):
+                    continue
+                early_intersect = T.intersect(DOY_this_year, early)
+                peak_intersect = T.intersect(DOY_this_year, peak)
+                late_intersect = T.intersect(DOY_this_year, late)
 
-                    early_mean = np.nanmean(early_vals)
-                    peak_mean = np.nanmean(peak_vals)
-                    late_mean = np.nanmean(late_vals)
+                early_picked = [DOY_this_year.index(i) for i in early_intersect]
+                peak_picked = [DOY_this_year.index(i) for i in peak_intersect]
+                late_picked = [DOY_this_year.index(i) for i in late_intersect]
 
-                    early_vals_list.append(early_mean)
-                    peak_vals_list.append(peak_mean)
-                    late_vals_list.append(late_mean)
-                early_vals_list = np.array(early_vals_list)
-                peak_vals_list = np.array(peak_vals_list)
-                late_vals_list = np.array(late_vals_list)
+                early_picked.sort()
+                peak_picked.sort()
+                late_picked.sort()
 
-                early_vals_dict[pix] = early_vals_list
-                peak_vals_dict[pix] = peak_vals_list
-                late_vals_dict[pix] = late_vals_list
-            early_outdir_i = join(outdir_i,'early')
-            peak_outdir_i = join(outdir_i,'peak')
-            late_outdir_i = join(outdir_i,'late')
-            T.mk_dir(early_outdir_i,force=True)
-            T.mk_dir(peak_outdir_i,force=True)
-            T.mk_dir(late_outdir_i,force=True)
-            T.save_distributed_perpix_dic(early_vals_dict,early_outdir_i)
-            T.save_distributed_perpix_dic(peak_vals_dict,peak_outdir_i)
-            T.save_distributed_perpix_dic(late_vals_dict,late_outdir_i)
+                early_date_picked = [date_this_year[i] for i in early_picked]
+                peak_date_picked = [date_this_year[i] for i in peak_picked]
+                late_date_picked = [date_this_year[i] for i in late_picked]
+
+                early_vals_picked = [vals_this_year[i] for i in early_picked]
+                peak_vals_picked = [vals_this_year[i] for i in peak_picked]
+                late_vals_picked = [vals_this_year[i] for i in late_picked]
+
+                # plt.plot(early_date_picked,early_vals_picked)
+                # plt.plot(peak_date_picked,peak_vals_picked)
+                # plt.plot(late_date_picked,late_vals_picked)
+                # plt.scatter(early_date_picked, early_vals_picked)
+                # plt.scatter(peak_date_picked, peak_vals_picked)
+                # plt.scatter(late_date_picked, late_vals_picked)
+                # plt.show()
+
+                early_mean = np.nanmean(early_vals_picked)
+                peak_mean = np.nanmean(peak_vals_picked)
+                late_mean = np.nanmean(late_vals_picked)
+
+                if not pix in early_vals_dict:
+                    early_vals_dict[pix] = []
+                    peak_vals_dict[pix] = []
+                    late_vals_dict[pix] = []
+                early_vals_dict[pix].append(early_mean)
+                peak_vals_dict[pix].append(peak_mean)
+                late_vals_dict[pix].append(late_mean)
+        early_outdir_i = join(outdir_i, 'early')
+        peak_outdir_i = join(outdir_i, 'peak')
+        late_outdir_i = join(outdir_i, 'late')
+        T.mk_dir(early_outdir_i, force=True)
+        T.mk_dir(peak_outdir_i, force=True)
+        T.mk_dir(late_outdir_i, force=True)
+        T.save_distributed_perpix_dic(early_vals_dict, early_outdir_i)
+        T.save_distributed_perpix_dic(peak_vals_dict, peak_outdir_i)
+        T.save_distributed_perpix_dic(late_vals_dict, late_outdir_i)
 
     def calculate_std_anomaly(self):
         fdir = join(self.this_class_arr,'pick_seasonal_values')
         for var_i in T.listdir(fdir):
+            if not 'VODCA' in var_i:
+                continue
             fdir_i = join(fdir,var_i,'origin')
             outdir_i = join(fdir,var_i,'std_anomaly')
             for season_i in T.listdir(fdir_i):
@@ -307,6 +429,8 @@ class Seasonal_variables:
     def calculate_anomaly(self):
         fdir = join(self.this_class_arr,'pick_seasonal_values')
         for var_i in T.listdir(fdir):
+            if not 'VODCA' in var_i:
+                continue
             fdir_i = join(fdir,var_i,'origin')
             outdir_i = join(fdir,var_i,'anomaly')
             for season_i in T.listdir(fdir_i):
@@ -332,7 +456,12 @@ class Trend:
 
     def run(self):
         # self.LAI3g_df()
-        self.phenology_df()
+        # self.VODCA_GPP_df()
+        # self.AMSRU_VOD_df()
+        # self.phenology_df()
+        # self.trend_tif('VODCA_GPP')
+        self.trend_tif('AMSRU_VOD')
+        # self.trend_tif('LAI3g')
         pass
 
     def LAI3g_df(self):
@@ -359,6 +488,55 @@ class Trend:
         T.save_df(df,outf)
         T.df_to_excel(df,outf)
 
+    def VODCA_GPP_df(self):
+        fdir = join(Seasonal_variables().this_class_arr,'pick_seasonal_values/VODCA_GPP')
+        outdir = join(self.this_class_arr,'VODCA_GPP')
+        T.mk_dir(outdir,force=True)
+        T.open_path_and_file(outdir)
+        period_list = ['early','peak','late']
+        result_df = []
+        for period in period_list:
+            fdir_i = join(fdir,'origin',period)
+            dict_i = T.load_npy_dir(fdir_i)
+            result_dict = {}
+            for pix in dict_i:
+                vals = dict_i[pix]
+                a, b, r, p = T.nan_line_fit(list(range(len(vals))),vals)
+                result_dict_i = {f'{period}_a':a,f'{period}_b':b,f'{period}_r':r,f'{period}_p':p}
+                result_dict[pix] = result_dict_i
+            df_i = T.dic_to_df(result_dict,'pix')
+            result_df.append(df_i)
+        df = pd.DataFrame()
+        df = T.join_df_list(df,result_df,'pix')
+        df = Dataframe_func(df).df
+        outf = join(outdir,'dataframe.df')
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
+    def AMSRU_VOD_df(self):
+        fdir = join(Seasonal_variables().this_class_arr,'pick_seasonal_values/AMSRU_VOD')
+        outdir = join(self.this_class_arr,'AMSRU_VOD')
+        T.mk_dir(outdir,force=True)
+        T.open_path_and_file(outdir)
+        period_list = ['early','peak','late']
+        result_df = []
+        for period in period_list:
+            fdir_i = join(fdir,'origin',period)
+            dict_i = T.load_npy_dir(fdir_i)
+            result_dict = {}
+            for pix in dict_i:
+                vals = dict_i[pix]
+                a, b, r, p = T.nan_line_fit(list(range(len(vals))),vals)
+                result_dict_i = {f'{period}_a':a,f'{period}_b':b,f'{period}_r':r,f'{period}_p':p}
+                result_dict[pix] = result_dict_i
+            df_i = T.dic_to_df(result_dict,'pix')
+            result_df.append(df_i)
+        df = pd.DataFrame()
+        df = T.join_df_list(df,result_df,'pix')
+        df = Dataframe_func(df).df
+        outf = join(outdir,'dataframe.df')
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
 
     def phenology_df(self):
         phenology_dir = join(data_root,'lai3g_pheno')
@@ -405,6 +583,66 @@ class Trend:
         T.save_df(df,outf)
         T.df_to_excel(df,outf)
 
+    def trend_tif(self,variable):
+        outdir = join(self.this_class_tif,variable)
+        T.mk_dir(outdir,force=True)
+        T.open_path_and_file(outdir)
+        dff = join(self.this_class_arr,variable,'dataframe.df')
+        df = T.load_df(dff)
+        T.print_head_n(df,5)
+        period_list = ['early','peak','late']
+        for period in period_list:
+            a_dict = T.df_to_spatial_dic(df, f'{period}_a')
+            p_dict = T.df_to_spatial_dic(df, f'{period}_p')
+            outf_a = join(outdir, f'{variable}_{period}_a.tif')
+            outf_p = join(outdir, f'{variable}_{period}_p.tif')
+            arr_a = DIC_and_TIF().pix_dic_to_tif(a_dict, outf_a)
+            arr_p = DIC_and_TIF().pix_dic_to_tif(p_dict, outf_p)
+
+
+
+class Time_series:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Time_series',
+                                                                                       result_root_this_script)
+
+    def run(self):
+        self.foo()
+        pass
+
+    def foo(self):
+        variable = 'VODCA_GPP'
+        # variable = 'LAI3g'
+        # variable = 'AMSRU_VOD'
+        fdir = join(Seasonal_variables().this_class_arr,f'pick_seasonal_values/{variable}')
+        # outdir = join(self.this_class_arr,variable)
+        # T.mk_dir(outdir,force=True)
+        # T.open_path_and_file(outdir)
+        period_list = ['early','peak','late']
+        vals_dict = {}
+        for period in period_list:
+            fdir_i = join(fdir,'origin',period)
+            # fdir_i = join(fdir,'std_anomaly',period)
+            dict_i = T.load_npy_dir(fdir_i)
+            vals_dict[period] = dict_i
+        df = T.spatial_dics_to_df(vals_dict)
+        df = Dataframe_func(df).df
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif)
+        plt.figure()
+        for period in period_list:
+            arr = df[period].tolist()
+            arr_new = []
+            for i in arr:
+                # print(len(i))
+                if not len(i) == 13:
+                    continue
+                arr_new.append(i)
+            early_arr_mean = np.nanmean(arr_new,axis=0)
+            plt.plot(early_arr_mean,label=period,linewidth=4)
+        plt.legend()
+        plt.title(variable)
+        plt.show()
 
 class Sankey_plot:
     def __init__(self):
@@ -813,7 +1051,8 @@ class Dataframe_daily:
 def main():
     # Phenology().run()
     # Seasonal_variables().run()
-    Trend().run()
+    # Trend().run()
+    Time_series().run()
     # Sankey_plot().run()
     # Dataframe_daily().run()
     pass

@@ -1525,9 +1525,9 @@ class VODCA_GPP:
     def run(self):
         # self.nc_to_tif()
         # self.resample()
-        # self.per_pix()
-        # self.daily()
-        self.check_daily()
+        self.per_pix()
+        self.daily()
+        # self.check_daily()
         pass
 
     def nc_to_tif(self):
@@ -1585,7 +1585,7 @@ class VODCA_GPP:
                 picked_date = date_obj_list[picked_year_index[0]:picked_year_index[-1] + 1]
                 vals = np.array(vals)
                 points = copy.copy(vals)
-                vals[vals <= 0] = 0
+                vals[vals <= 0] = -1
                 points[points <= 0] = np.nan
                 picked_vals = vals[picked_year_index]
                 picked_points = points[picked_year_index]
@@ -1593,7 +1593,7 @@ class VODCA_GPP:
                     continue
                 vals_list.append(picked_vals)
                 dates_list.append(picked_date)
-            results = HANTS().hants_interpolate(vals_list, dates_list, (0, 20))
+            results = HANTS().hants_interpolate(vals_list, dates_list, (0, 10))
             spatial_dict[pix] = results
         T.save_npy(spatial_dict, outpath)
         pass
@@ -1627,6 +1627,40 @@ class VODCA_GPP:
         plt.imshow(arr)
         plt.show()
 
+
+class VOD_AMSRU:
+
+    def __init__(self):
+        self.datadir = join(data_root,'AMSRU_VOD')
+        pass
+
+    def run(self):
+        self.per_pix()
+        pass
+
+    def per_pix(self):
+        fdir = join(self.datadir, 'tif/D')
+        outdir = join(self.datadir, 'tif_per_pix')
+        outdir_dateobj = join(self.datadir, 'dateobj')
+        T.mk_dir(outdir)
+        T.mk_dir(outdir_dateobj)
+        for year in T.listdir(fdir):
+            print(year)
+            print('----------------')
+            year_dir = join(fdir, year)
+            outdir_year = join(outdir, year)
+            Pre_Process().data_transform(year_dir, outdir_year)
+            date_obj_list = []
+            for f in T.listdir(year_dir):
+                date = f.split('.')[0]
+                year = date[:4]
+                doy = date[4:7]
+                year = int(year)
+                doy = int(doy)
+                date_obj = datetime.datetime(year, 1, 1) + datetime.timedelta(doy - 1)
+                date_obj_list.append(date_obj)
+            np.save(join(outdir_dateobj, f'{year}.npy'), date_obj_list)
+
 def main():
     # LAI().run()
     # seasonal_split_ly_NDVI()
@@ -1640,7 +1674,8 @@ def main():
     # LAI_4g_v101().run()
     # MODIS_LAI_BU_CMG().run()
     # TRENDY().run()
-    VODCA_GPP().run()
+    # VODCA_GPP().run()
+    VOD_AMSRU().run()
     # check_cci_sm()
     # f = '/Volumes/NVME2T/greening_project_redo/data/GEE_AVHRR_LAI/per_pix_clean/per_pix_dic_005.npy'
     # dic = T.load_npy(f)
