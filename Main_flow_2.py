@@ -11,12 +11,10 @@ global_season_dic = [
 
 
 
-
-
-class Phenology:
+class Phenology_plot_LAI3g:
 
     def __init__(self):
-        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Phenology',
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Phenology_plot_LAI3g',
                                                                                        result_root_this_script)
         pass
 
@@ -67,7 +65,7 @@ class Phenology:
         T.mk_dir(outdir,force=True)
         dff = Dataframe_daily().dff
         df = T.load_df(dff)
-        df = Dataframe_daily().clean_df(df)
+        df = self.__clean_df(df)
         lc_col = 'landcover_GLC'
         cross_df_dict = T.cross_select_dataframe(df,lc_col)
         for df_key in cross_df_dict:
@@ -82,7 +80,7 @@ class Phenology:
         T.mk_dir(outdir,force=True)
         dff = Dataframe_daily().dff
         df = T.load_df(dff)
-        df = Dataframe_daily().clean_df(df)
+        df = self.__clean_df(df)
         koppen_col = 'koppen'
         cross_df_dict = T.cross_select_dataframe(df,koppen_col)
         for df_key in cross_df_dict:
@@ -122,6 +120,111 @@ class Phenology:
         plt.xlabel('DOY')
         plt.ylabel('LAI 3g (m2/m2)')
 
+
+class Phenology_plot_AMSRU_VOD:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Phenology_plot_AMSRU_VOD',
+                                                                                       result_root_this_script)
+        self.datadir = join(data_root, 'AMSRU_VOD')
+        self.year_range = list(range(2003, 2016))
+
+    def run(self):
+        # self.dataframe()
+        self.plot_phenology_every_n_years(5)
+
+    def dataframe(self):
+        fdir = join(self.datadir, 'tif_per_pix')
+        outdir = join(self.this_class_arr, 'dataframe')
+        T.mkdir(outdir)
+        # T.open_path_and_file(outdir)
+        outf = join(outdir, 'dataframe.df')
+        date_dir = join(self.datadir, 'dateobj')
+        dateobj_dict = {}
+        for year in T.listdir(fdir):
+            # dict_year = T.load_npy_dir(join(fdir, year))
+            dateobj_list = np.load(join(date_dir, year + '.npy'), allow_pickle=True)
+            dateobj_dict[year] = dateobj_list
+
+        spatial_dict = {}
+        spatial_dict_date = {}
+        for year in T.listdir(fdir):
+            dict_year = T.load_npy_dir(join(fdir, year))
+            print(year)
+            for pix in dict_year:
+                r,c = pix
+                if r > 120:
+                    continue
+                vals = dict_year[pix]
+                vals[vals<0] = np.nan
+                if T.is_all_nan(vals):
+                    continue
+                if not pix in spatial_dict:
+                    spatial_dict[pix] = []
+                    spatial_dict_date[pix] = []
+                spatial_dict[pix].append(vals)
+                spatial_dict_date[pix].append(dateobj_dict[year])
+        spatial_dict_all = {'VOD':spatial_dict,'date':spatial_dict_date}
+        df = T.spatial_dics_to_df(spatial_dict_all)
+        df = Dataframe_func(df).df
+        T.save_df(df, outf)
+        T.df_to_excel(df,outf)
+
+    def plot_phenology_every_n_years(self,n):
+        bin_n = np.arange(self.year_range[0],self.year_range[-1], step=n)
+        bin_n = list(bin_n)
+        bin_n.append(self.year_range[-1])
+        print(bin_n)
+        dff = join(self.this_class_arr,'dataframe' ,'dataframe.df')
+        df = T.load_df(dff)
+        for bin_i in range(len(bin_n)-1):
+            bin_i_start = bin_n[bin_i]
+            bin_i_end = bin_n[bin_i+1]
+            select_year = list(range(bin_i_start,bin_i_end))
+            print(select_year)
+            #
+            vod_mean_all = []
+            for i,row in tqdm(df.iterrows(),total=len(df)):
+                vod = row['VOD']
+                date = row['date']
+                vod_dict = {}
+                for year in select_year:
+                    try:
+                        date_this_year = date[year-self.year_range[0]]
+                        vod_this_year = vod[year-self.year_range[0]]
+                    except:
+                        # print('error',date)
+                        # print('error',vod)
+                        continue
+                    doy_list = T.date_to_DOY(date_this_year)
+                    values_dict = dict(zip(doy_list,vod_this_year))
+                    for doy in values_dict:
+                        if not doy in vod_dict:
+                            vod_dict[doy] = []
+                        vod_dict[doy].append(values_dict[doy])
+                    # print(vod_dict)
+                # exit()
+                doy_list = list(vod_dict.keys())
+                doy_list.sort()
+                vod_mean = []
+                for doy in range(1,366):
+                    if not doy in vod_dict:
+                        vod_mean.append(np.nan)
+                    else:
+                        vod_mean.append(np.nanmean(vod_dict[doy]))
+                vod_mean_all.append(vod_mean)
+            # vod_mean_all = np.array(vod_mean_all)
+            print(np.shape(vod_mean_all))
+            vod_mean_all_mean = np.nanmean(vod_mean_all,axis=0)
+            plt.plot(vod_mean_all_mean,label=str(bin_i_start)+'-'+str(bin_i_end-1))
+
+        plt.legend()
+        plt.title('AMSRU VOD')
+        plt.xlabel('DOY')
+        plt.ylabel('VOD')
+        plt.show()
+
+
 class Seasonal_variables:
     def __init__(self):
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Seasonal_variables',
@@ -131,7 +234,7 @@ class Seasonal_variables:
     def run(self):
         # self.pick_seasonal_values()
         # self.pick_seasonal_values_VODCAGPP()
-        self.pick_seasonal_values_VOD_AMSRU()
+        # self.pick_seasonal_values_VOD_AMSRU()
         # self.calculate_anomaly()
         # self.calculate_std_anomaly()
         pass
@@ -408,7 +511,7 @@ class Seasonal_variables:
     def calculate_std_anomaly(self):
         fdir = join(self.this_class_arr,'pick_seasonal_values')
         for var_i in T.listdir(fdir):
-            if not 'VODCA' in var_i:
+            if not 'AMSRU' in var_i:
                 continue
             fdir_i = join(fdir,var_i,'origin')
             outdir_i = join(fdir,var_i,'std_anomaly')
@@ -429,7 +532,7 @@ class Seasonal_variables:
     def calculate_anomaly(self):
         fdir = join(self.this_class_arr,'pick_seasonal_values')
         for var_i in T.listdir(fdir):
-            if not 'VODCA' in var_i:
+            if not 'AMSRU' in var_i:
                 continue
             fdir_i = join(fdir,var_i,'origin')
             outdir_i = join(fdir,var_i,'anomaly')
@@ -914,7 +1017,9 @@ class Dataframe_func:
         df = T.add_spatial_dic_to_df(df, p_pet_dic, 'AI')
         return df
     def P_PET_ratio(self, P_PET_fdir):
-
+        outf = join(temporary_root, 'P_PET_ratio_dic.npy')
+        if os.path.exists(outf):
+            return T.load_npy(outf)
         fdir = P_PET_fdir
         dic = T.load_npy_dir(fdir)
         dic_long_term = {}
@@ -928,6 +1033,7 @@ class Dataframe_func:
             vals = self.drop_n_std(vals)
             long_term_vals = np.nanmean(vals)
             dic_long_term[pix] = long_term_vals
+        T.save_npy(dic_long_term, outf)
         return dic_long_term
     def drop_n_std(self, vals, n=1):
         vals = np.array(vals)
@@ -960,16 +1066,12 @@ class Dataframe_daily:
         df = self.__gen_df_init()
 
         # df = self.add_variables()
-        df = self.add_LAI3g()
+        # df = self.add_LAI3g()
         # df = self.add_sos_eos(df)
+        self.get_dateobj(df)
 
-        df = self.add_GLC_landcover_data_to_df(df)
-        # df = self.add_NDVI_mask(df)
-        # df = self.add_Koppen_data_to_df(df)
-        # df = self.add_AI_to_df(df)
-        df = df[df['lat']>=30]
-        T.save_df(df, self.dff)
-        T.df_to_excel(df, self.dff)
+        # T.save_df(df, self.dff)
+        # T.df_to_excel(df, self.dff)
         pass
 
 
@@ -995,7 +1097,18 @@ class Dataframe_daily:
     def add_LAI3g(self):
         fdir = join(data_root,'daily_X/LAI3g')
         val_dict = T.load_npy_dir(fdir)
-        spatial_dict_all = {'LAI3g':val_dict}
+        LAI3g_new_dict = {}
+        for pix in val_dict:
+            vals = val_dict[pix]
+            if len(vals) == 0:
+                continue
+            vals_new = []
+            for val_i in vals:
+                val_i = np.array(val_i)
+                vals_new.append(val_i)
+            vals_new = np.array(vals_new)
+            LAI3g_new_dict[pix] = vals_new
+        spatial_dict_all = {'LAI3g':LAI3g_new_dict}
         df = T.spatial_dics_to_df(spatial_dict_all)
         return df
 
@@ -1026,6 +1139,32 @@ class Dataframe_daily:
 
         return df
 
+    def get_dateobj(self,df):
+        outf = join(self.this_class_arr,'dateobj.npy')
+        for i,row in tqdm(df.iterrows(),total=len(df)):
+            pix = row['pix']
+            LAI3g = row['LAI3g']
+            LAI3g = np.array(LAI3g)
+            LAI3g_date_list = []
+            # LAI3g_val_list = []
+            for j in range(len(LAI3g)):
+                LAI3g_i = LAI3g[j]
+                LAI3g_i = np.array(LAI3g_i)
+                # LAI3g_val_list.append(LAI3g_i)
+                year = global_start_year + j
+                date_start = datetime.datetime(year,1,1)
+                date_list = []
+                value_list = []
+                for k in range(len(LAI3g[j])):
+                    date = date_start + datetime.timedelta(days=k)
+                    date_list.append(date)
+                date_list = np.array(date_list)
+                LAI3g_date_list.append(date_list)
+            LAI3g_date_list = np.array(LAI3g_date_list)
+            np.save(outf,LAI3g_date_list)
+            break
+
+
     def add_variables(self):
         var_mode = self.mode
         fdir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal')
@@ -1046,15 +1185,131 @@ class Dataframe_daily:
         return df
 
 
+class Carryover_AMSRU_VOD_GPP:
+    def __init__(self):
+
+        pass
+
+    def run(self):
+        # self.AMSRU_VOD()
+        self.VODCA_GPP()
+        pass
+
+    def AMSRU_VOD(self):
+        lai_start_year = 1982
+        vod_start_year = 2003
+        year_list = list(range(vod_start_year,2016))
+        dateobj_list = [datetime.datetime(year,1,1) for year in year_list]
+        fdir_VOD = join(Seasonal_variables().this_class_arr,'pick_seasonal_values','AMSRU_VOD')
+        fdir_LAI3g = join(Seasonal_variables().this_class_arr,'pick_seasonal_values','LAI3g')
+        period_list = ['early','peak','late']
+        result_dict = {}
+        for period in period_list:
+            fdir_VOD_i = join(fdir_VOD,'std_anomaly',period)
+            fdir_LAI3g_i = join(fdir_LAI3g,'std_anomaly',period)
+            VOD_dict = T.load_npy_dir(fdir_VOD_i)
+            LAI3g_dict = T.load_npy_dir(fdir_LAI3g_i)
+            result_dict.update({f'{period}_VOD':VOD_dict})
+            result_dict.update({f'{period}_LAI3g':LAI3g_dict})
+        df = T.spatial_dics_to_df(result_dict)
+        enhanced_vod_list = []
+        not_enhanced_vod_list = []
+        for i,row in tqdm(df.iterrows(),total=len(df)):
+            late_vod = row['late_VOD']
+            if type(late_vod) == float:
+                continue
+            early_lai = row['early_LAI3g']
+            peak_lai = row['peak_LAI3g']
+
+            early_peak_lai_mean = (early_lai + peak_lai)/2
+            early_peak_lai_mean_cut = early_peak_lai_mean[(2003-1982):]
+            early_peak_lai_mean_cut = early_peak_lai_mean_cut[:-3] # 2003-2015
+            if not len(early_peak_lai_mean_cut) == len(late_vod):
+                continue
+            enhanced_early_peak = early_peak_lai_mean_cut > 0
+            not_enhanced_early_peak = early_peak_lai_mean_cut < 0
+            late_vod_enhanced = copy.copy(late_vod)
+            late_vod_not_enhanced = copy.copy(late_vod)
+            late_vod_enhanced[~enhanced_early_peak] = np.nan
+            late_vod_not_enhanced[~not_enhanced_early_peak] = np.nan
+            late_vod_enhanced_mean = np.nanmean(late_vod_enhanced)
+            late_vod_not_enhanced_mean = np.nanmean(late_vod_not_enhanced)
+            enhanced_vod_list.append(late_vod_enhanced_mean)
+            not_enhanced_vod_list.append(late_vod_not_enhanced_mean)
+        plt.hist(enhanced_vod_list,bins=50,alpha=0.3,label='enhanced',density=True,range=(-2,2))
+        plt.hist(not_enhanced_vod_list,bins=50,alpha=0.3,label='not enhanced',density=True,range=(-2,2))
+        plt.legend()
+        plt.show()
+
+    def VODCA_GPP(self):
+        lai_start_year = 1982
+        vod_start_year = 1988
+        lai_end_year = 1982 + 37 - 1
+        vod_end_year = 1988 + 33 - 1
+        # print(lai_end_year)
+        # print(vod_end_year)
+        # exit()
+        year_list = list(range(vod_start_year,2019))
+        dateobj_list = [datetime.datetime(year,1,1) for year in year_list]
+        fdir_VOD = join(Seasonal_variables().this_class_arr,'pick_seasonal_values','VODCA_GPP')
+        fdir_LAI3g = join(Seasonal_variables().this_class_arr,'pick_seasonal_values','LAI3g')
+        period_list = ['early','peak','late']
+        result_dict = {}
+        for period in period_list:
+            fdir_VOD_i = join(fdir_VOD,'std_anomaly',period)
+            fdir_LAI3g_i = join(fdir_LAI3g,'std_anomaly',period)
+            VOD_dict = T.load_npy_dir(fdir_VOD_i)
+            LAI3g_dict = T.load_npy_dir(fdir_LAI3g_i)
+            result_dict.update({f'{period}_GPP':VOD_dict})
+            result_dict.update({f'{period}_LAI3g':LAI3g_dict})
+        df = T.spatial_dics_to_df(result_dict)
+        enhanced_vod_list = []
+        not_enhanced_vod_list = []
+        for i,row in tqdm(df.iterrows(),total=len(df)):
+            late_vod = row['late_GPP']
+            if type(late_vod) == float:
+                continue
+            early_lai = row['early_LAI3g']
+            peak_lai = row['peak_LAI3g']
+
+            early_peak_lai_mean = (early_lai + peak_lai)/2
+            early_peak_lai_mean_cut = early_peak_lai_mean[(vod_start_year-lai_start_year):]
+            late_vod = late_vod[:len(early_peak_lai_mean_cut)]
+            # print(len(early_peak_lai_mean_cut))
+            # print(len(late_vod))
+            # exit()
+            # # early_peak_lai_mean_cut = early_peak_lai_mean_cut[:-3] # 2003-2015
+            # if not len(early_peak_lai_mean_cut) == len(late_vod):
+            #     continue
+            enhanced_early_peak = early_peak_lai_mean_cut > 0
+            not_enhanced_early_peak = early_peak_lai_mean_cut < 0
+            late_vod_enhanced = copy.copy(late_vod)
+            late_vod_not_enhanced = copy.copy(late_vod)
+            late_vod_enhanced[~enhanced_early_peak] = np.nan
+            late_vod_not_enhanced[~not_enhanced_early_peak] = np.nan
+            late_vod_enhanced_mean = np.nanmean(late_vod_enhanced)
+            late_vod_not_enhanced_mean = np.nanmean(late_vod_not_enhanced)
+            enhanced_vod_list.append(late_vod_enhanced_mean)
+            not_enhanced_vod_list.append(late_vod_not_enhanced_mean)
+        plt.hist(enhanced_vod_list,bins=50,alpha=0.3,label='enhanced',density=True,range=(-2,2))
+        plt.hist(not_enhanced_vod_list,bins=50,alpha=0.3,label='not enhanced',density=True,range=(-2,2))
+        plt.legend()
+        plt.show()
+
+
+        pass
+
 
 
 def main():
     # Phenology().run()
+    # Phenology_plot_AMSRU_VOD().run()
     # Seasonal_variables().run()
     # Trend().run()
-    Time_series().run()
+    # Time_series().run()
     # Sankey_plot().run()
     # Dataframe_daily().run()
+    Carryover_AMSRU_VOD_GPP().run()
     pass
 
 if __name__ == '__main__':
