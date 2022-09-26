@@ -1192,8 +1192,60 @@ class Carryover_AMSRU_VOD_GPP:
 
     def run(self):
         # self.AMSRU_VOD()
-        self.VODCA_GPP()
+        # self.VODCA_GPP()
+        self.VODCA_GPP_timeseries()
+        # self.LAI3g()
         pass
+    def LAI3g(self):
+        lai_start_year = 1982
+        year_list = list(range(lai_start_year,2019))
+        dateobj_list = [datetime.datetime(year,1,1) for year in year_list]
+        fdir_LAI3g = join(Seasonal_variables().this_class_arr,'pick_seasonal_values','LAI3g')
+        period_list = ['early','peak','late']
+        result_dict = {}
+        for period in period_list:
+            fdir_LAI3g_i = join(fdir_LAI3g,'std_anomaly',period)
+            LAI3g_dict = T.load_npy_dir(fdir_LAI3g_i)
+            result_dict.update({f'{period}_LAI3g':LAI3g_dict})
+        df = T.spatial_dics_to_df(result_dict)
+        T.print_head_n(df,10)
+        enhanced_vod_list = []
+        not_enhanced_vod_list = []
+        for i,row in tqdm(df.iterrows(),total=len(df)):
+            late_lai = row['late_LAI3g']
+            if type(late_lai) == float:
+                continue
+            early_lai = row['early_LAI3g']
+            peak_lai = row['peak_LAI3g']
+
+            early_peak_lai_mean = (early_lai + peak_lai)/2
+            # annual_lai_mean = (early_lai + peak_lai + late_lai)/3
+            annual_lai_mean = late_lai
+            early_peak_lai_mean = early_peak_lai_mean[:-1] # remove last value
+            annual_lai_mean = annual_lai_mean[1:] # remove first value
+            enhanced_early_peak = early_peak_lai_mean > 0
+            not_enhanced_early_peak = early_peak_lai_mean < 0
+            late_vod_enhanced = copy.copy(annual_lai_mean)
+            late_vod_not_enhanced = copy.copy(annual_lai_mean)
+            late_vod_enhanced[~enhanced_early_peak] = np.nan
+            late_vod_not_enhanced[~not_enhanced_early_peak] = np.nan
+            # late_vod_enhanced_mean = np.nanmean(late_vod_enhanced)
+            # late_vod_not_enhanced_mean = np.nanmean(late_vod_not_enhanced)
+            for enhanecd in late_vod_enhanced:
+                if np.isnan(enhanecd):
+                    continue
+                enhanced_vod_list.append(enhanecd)
+            for not_enhanced in late_vod_not_enhanced:
+                if np.isnan(not_enhanced):
+                    continue
+                not_enhanced_vod_list.append(not_enhanced)
+            # enhanced_vod_list.append(late_vod_enhanced_mean)
+            # not_enhanced_vod_list.append(late_vod_not_enhanced_mean)
+        plt.hist(enhanced_vod_list,bins=50,alpha=0.3,label='enhanced',density=True,range=(-3,3))
+        plt.hist(not_enhanced_vod_list,bins=50,alpha=0.3,label='not enhanced',density=True,range=(-3,3))
+        plt.legend()
+        plt.title('LAI3g')
+        plt.show()
 
     def AMSRU_VOD(self):
         lai_start_year = 1982
@@ -1239,6 +1291,7 @@ class Carryover_AMSRU_VOD_GPP:
         plt.hist(enhanced_vod_list,bins=50,alpha=0.3,label='enhanced',density=True,range=(-2,2))
         plt.hist(not_enhanced_vod_list,bins=50,alpha=0.3,label='not enhanced',density=True,range=(-2,2))
         plt.legend()
+        plt.title('AMSRU VOD')
         plt.show()
 
     def VODCA_GPP(self):
@@ -1246,9 +1299,6 @@ class Carryover_AMSRU_VOD_GPP:
         vod_start_year = 1988
         lai_end_year = 1982 + 37 - 1
         vod_end_year = 1988 + 33 - 1
-        # print(lai_end_year)
-        # print(vod_end_year)
-        # exit()
         year_list = list(range(vod_start_year,2019))
         dateobj_list = [datetime.datetime(year,1,1) for year in year_list]
         fdir_VOD = join(Seasonal_variables().this_class_arr,'pick_seasonal_values','VODCA_GPP')
@@ -1263,18 +1313,115 @@ class Carryover_AMSRU_VOD_GPP:
             result_dict.update({f'{period}_GPP':VOD_dict})
             result_dict.update({f'{period}_LAI3g':LAI3g_dict})
         df = T.spatial_dics_to_df(result_dict)
-        enhanced_vod_list = []
-        not_enhanced_vod_list = []
-        for i,row in tqdm(df.iterrows(),total=len(df)):
+        df = Dataframe_func(df).df
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif)
+        # plt.show()
+        lc_list = T.get_df_unique_val_list(df,'landcover_GLC')
+        for lc in lc_list:
+            df_lc = df[df['landcover_GLC'] == lc]
+            enhanced_vod_list = []
+            not_enhanced_vod_list = []
+            plt.figure()
+            for i,row in tqdm(df_lc.iterrows(),total=len(df_lc)):
+                late_vod = row['late_GPP']
+                if type(late_vod) == float:
+                    continue
+                early_lai = row['early_LAI3g']
+                peak_lai = row['peak_LAI3g']
+                early_vod = row['early_GPP']
+                peak_vod = row['peak_GPP']
+
+                early_peak_lai_mean = (early_lai + peak_lai)/2
+                early_peak_lai_mean_cut = early_peak_lai_mean[(vod_start_year-lai_start_year):]
+                late_vod = late_vod[:len(early_peak_lai_mean_cut)]
+                early_vod = early_vod[:len(early_peak_lai_mean_cut)]
+                peak_vod = peak_vod[:len(early_peak_lai_mean_cut)]
+                annual_vod = (early_vod + peak_vod + late_vod)/3
+                # early_peak_lai_mean_cut = early_peak_lai_mean_cut[:-1] # remove last year
+                # annual_vod = annual_vod[1:] # remove first year
+                # print(len(early_peak_lai_mean_cut))
+                # print(len(late_vod))
+                # exit()
+                # # early_peak_lai_mean_cut = early_peak_lai_mean_cut[:-3] # 2003-2015
+                # if not len(early_peak_lai_mean_cut) == len(late_vod):
+                #     continue
+                enhanced_early_peak = early_peak_lai_mean_cut > 0
+                not_enhanced_early_peak = early_peak_lai_mean_cut < 0
+                late_vod_enhanced = copy.copy(annual_vod)
+                late_vod_not_enhanced = copy.copy(annual_vod)
+                late_vod_enhanced[~enhanced_early_peak] = np.nan
+                late_vod_not_enhanced[~not_enhanced_early_peak] = np.nan
+                # late_vod_enhanced_mean = np.nanmean(late_vod_enhanced)
+                # late_vod_not_enhanced_mean = np.nanmean(late_vod_not_enhanced)
+                for i in late_vod_enhanced:
+                    if np.isnan(i):
+                        continue
+                    enhanced_vod_list.append(i)
+                for i in late_vod_not_enhanced:
+                    if np.isnan(i):
+                        continue
+                    not_enhanced_vod_list.append(i)
+                # enhanced_vod_list.append(late_vod_enhanced_mean)
+                # not_enhanced_vod_list.append(late_vod_not_enhanced_mean)
+            plt.hist(enhanced_vod_list,bins=50,alpha=0.3,label='enhanced',density=True,range=(-3,3))
+            plt.hist(not_enhanced_vod_list,bins=50,alpha=0.3,label='not enhanced',density=True,range=(-3,3))
+            plt.legend()
+            plt.title(f'VODCA_GPP {lc}')
+        plt.show()
+
+
+    def VODCA_GPP_timeseries(self):
+        lai_start_year = 1982
+        vod_start_year = 1988
+        lai_end_year = 1982 + 37 - 1
+        vod_end_year = 1988 + 33 - 1
+        year_list = list(range(vod_start_year,2019))
+        dateobj_list = [datetime.datetime(year,1,1) for year in year_list]
+        fdir_VOD = join(Seasonal_variables().this_class_arr,'pick_seasonal_values','VODCA_GPP')
+        fdir_LAI3g = join(Seasonal_variables().this_class_arr,'pick_seasonal_values','LAI3g')
+        period_list = ['early','peak','late']
+        result_dict = {}
+        for period in period_list:
+            fdir_VOD_i = join(fdir_VOD,'std_anomaly',period)
+            fdir_LAI3g_i = join(fdir_LAI3g,'std_anomaly',period)
+            VOD_dict = T.load_npy_dir(fdir_VOD_i)
+            LAI3g_dict = T.load_npy_dir(fdir_LAI3g_i)
+            result_dict.update({f'{period}_GPP':VOD_dict})
+            result_dict.update({f'{period}_LAI3g':LAI3g_dict})
+        df = T.spatial_dics_to_df(result_dict)
+        df = Dataframe_func(df).df
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif)
+        # plt.show()
+        lc_list = T.get_df_unique_val_list(df,'landcover_GLC')
+        # for lc in lc_list:
+        # df_lc = df[df['landcover_GLC'] == lc]
+        df_lc = df
+        enhanced_vod_dict = {}
+        enhanced_lai_dict = {}
+        not_enhanced_vod_dict = {}
+        plt.figure()
+        for i,row in tqdm(df_lc.iterrows(),total=len(df_lc)):
             late_vod = row['late_GPP']
             if type(late_vod) == float:
                 continue
             early_lai = row['early_LAI3g']
             peak_lai = row['peak_LAI3g']
+            late_lai = row['late_LAI3g']
+            early_vod = row['early_GPP']
+            peak_vod = row['peak_GPP']
 
             early_peak_lai_mean = (early_lai + peak_lai)/2
             early_peak_lai_mean_cut = early_peak_lai_mean[(vod_start_year-lai_start_year):]
+            late_lai_cut = late_lai[(vod_start_year-lai_start_year):]
             late_vod = late_vod[:len(early_peak_lai_mean_cut)]
+            early_vod = early_vod[:len(early_peak_lai_mean_cut)]
+            peak_vod = peak_vod[:len(early_peak_lai_mean_cut)]
+            annual_vod = (early_vod + peak_vod + late_vod)/3
+            # annual_vod = late_vod
+            # annual_vod = early_vod
+            # annual_vod = annual_vod
+            # early_peak_lai_mean_cut = early_peak_lai_mean_cut[:-1] # remove last year
+            # annual_vod = annual_vod[1:] # remove first year
             # print(len(early_peak_lai_mean_cut))
             # print(len(late_vod))
             # exit()
@@ -1283,21 +1430,60 @@ class Carryover_AMSRU_VOD_GPP:
             #     continue
             enhanced_early_peak = early_peak_lai_mean_cut > 0
             not_enhanced_early_peak = early_peak_lai_mean_cut < 0
-            late_vod_enhanced = copy.copy(late_vod)
-            late_vod_not_enhanced = copy.copy(late_vod)
+            late_vod_enhanced = copy.copy(annual_vod)
+            late_vod_not_enhanced = copy.copy(annual_vod)
+            # early_peak_lai_mean_cut_value = copy.copy(early_peak_lai_mean_cut)
+            late_lai_cut_value = copy.copy(late_lai_cut)
             late_vod_enhanced[~enhanced_early_peak] = np.nan
             late_vod_not_enhanced[~not_enhanced_early_peak] = np.nan
-            late_vod_enhanced_mean = np.nanmean(late_vod_enhanced)
-            late_vod_not_enhanced_mean = np.nanmean(late_vod_not_enhanced)
-            enhanced_vod_list.append(late_vod_enhanced_mean)
-            not_enhanced_vod_list.append(late_vod_not_enhanced_mean)
-        plt.hist(enhanced_vod_list,bins=50,alpha=0.3,label='enhanced',density=True,range=(-2,2))
-        plt.hist(not_enhanced_vod_list,bins=50,alpha=0.3,label='not enhanced',density=True,range=(-2,2))
+            # early_peak_lai_mean_cut_value[~enhanced_early_peak] = np.nan
+            late_lai_cut_value[~enhanced_early_peak] = np.nan
+            # late_vod_enhanced_mean = np.nanmean(late_vod_enhanced)
+            # late_vod_not_enhanced_mean = np.nanmean(late_vod_not_enhanced)
+            # for i in late_vod_enhanced:
+            #     if not i in enhanced_vod_dict:
+            #         enhanced_vod_dict[i] = []
+            #     # enhanced_vod_dict
+            #     # enhanced_vod_list.append(i)
+            for i in range(len(late_vod_enhanced)):
+                value = late_vod_enhanced[i]
+                if not i in enhanced_vod_dict:
+                    enhanced_vod_dict[i] = []
+                else:
+                    enhanced_vod_dict[i].append(value)
+            for i in range(len(late_lai_cut_value)):
+                value = late_lai_cut_value[i]
+                if not i in enhanced_lai_dict:
+                    enhanced_lai_dict[i] = []
+                else:
+                    enhanced_lai_dict[i].append(value)
+        enhanced_lai_list = []
+        enhanced_lai_std_list = []
+        enhanced_vod_list = []
+        enhanced_vod_std_list = []
+        keys = list(enhanced_vod_dict.keys())
+        keys.sort()
+        for i in keys:
+            enhanced_lai = enhanced_lai_dict[i]
+            enhanced_vod = enhanced_vod_dict[i]
+
+            enhanced_lai_mean = np.nanmean(enhanced_lai)
+            enhanced_lai_std = np.nanstd(enhanced_lai)
+            enhanced_vod_mean = np.nanmean(enhanced_vod)
+            enhanced_vod_std = np.nanstd(enhanced_vod)
+
+            enhanced_lai_list.append(enhanced_lai_mean)
+            enhanced_lai_std_list.append(enhanced_lai_std)
+            enhanced_vod_list.append(enhanced_vod_mean)
+            enhanced_vod_std_list.append(enhanced_vod_std)
+
+        plt.plot(keys,enhanced_lai_list,label='enhanced_lai')
+        # Plot().plot_line_with_error_bar(keys,enhanced_lai_list,enhanced_lai_std_list)
+        plt.plot(keys,enhanced_vod_list,label='enhanced_vod')
+        # Plot().plot_line_with_error_bar(keys,enhanced_vod_list,enhanced_vod_std_list)
         plt.legend()
+        # plt.title(lc)
         plt.show()
-
-
-        pass
 
 
 
