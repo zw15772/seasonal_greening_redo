@@ -276,12 +276,23 @@ class Dataframe:
         return df
 
     def add_early_peak_lai(self, df):
-        LAI3g_early = df['LAI3g_early'].tolist()
-        LAI3g_peak = df['LAI3g_peak'].tolist()
-        LAI3g_early = np.array(LAI3g_early,dtype=object)
-        LAI3g_peak = np.array(LAI3g_peak,dtype=object)
-        mean = (LAI3g_early + LAI3g_peak) / 2
-        df['LAI3g_early_peak_mean'] = mean
+        mean_list = []
+        for i,row in df.iterrows():
+            lai3g_early = row['LAI3g_early']
+            lai3g_peak = row['LAI3g_peak']
+            lai3g_late = row['LAI3g_late']
+            lai3g_early = np.array(lai3g_early)
+            lai3g_peak = np.array(lai3g_peak)
+            lai3g_late = np.array(lai3g_late)
+            mean = (lai3g_early + lai3g_peak) / 2
+            mean_list.append(mean)
+
+        # LAI3g_early = df['LAI3g_early'].tolist()
+        # LAI3g_peak = df['LAI3g_peak'].tolist()
+        # LAI3g_early = np.array(LAI3g_early,dtype=object)
+        # LAI3g_peak = np.array(LAI3g_peak,dtype=object)
+        # mean = (LAI3g_early + LAI3g_peak) / 2
+        df['LAI3g_early_peak_mean'] = mean_list
 
         return df
 
@@ -563,7 +574,39 @@ class Dataframe_One_pix:
         df['LAI3g_early_peak_mean_anomaly'] = vals_list
         return df
 
-class RF:
+
+class Photoperiod:
+    def __init__(self):
+
+        pass
+
+    def run(self):
+        lat_list = np.arange(30, 90, 0.5)
+        doy_list = np.arange(1, 365, 1)
+        for lat in tqdm(lat_list):
+            for doy in doy_list:
+                try:
+                    day_length = self.cal(doy, lat)
+                except:
+                    day_length = 0
+
+
+    def cal(self,doy,lat):
+        # Define parameters
+        light_intensity = 2.206 * 10 ** -3  # cal cm^-2 min^-1
+        lattitude_rad = math.radians(lat)  # Convert the user supplied lattitude to radians
+        B = -4.76 - 1.03 * math.log(light_intensity)  # Calculate angle of sun below horizon
+        alpha_rad = math.radians(90 + B)  # Calculate zenith distance
+        M_rad = math.radians(0.985600 * doy - 3.251)  # Calculate mean anomaly of the sun
+        Lambda_rad = math.radians(
+            math.degrees(M_rad) + 1.916 * math.sin(M_rad) + 0.020 * math.sin(2 * M_rad) + 282.565)  # calculate lambda
+        Delta_rad = math.asin(0.39779 * math.sin(Lambda_rad))  # calculate angle of declination
+        day_length = 2 / 15 * math.degrees(math.acos(
+            math.cos(alpha_rad) * 1 / math.cos(lattitude_rad) * 1 / math.cos(Delta_rad) - math.tan(
+                lattitude_rad) * math.tan(Delta_rad)))  # calculate day length in hours..
+        return day_length
+
+class RF: # todo: two peridos and two regions
     def __init__(self):
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('RF',
                                                                                        results_root)
@@ -622,8 +665,8 @@ class RF:
 
 
     def x_variables(self):
-        x_list = ['SPEI3_peak','SPEI3_late','VPD_peak','temp_peak',
-                  'VPD_late','temp_late','sos_std_anomaly','LAI3g_early_peak_mean']
+        x_list = ['SPEI3_peak','SPEI3_late','VPD_peak',
+                  'VPD_late','temp_late','LAI3g_early_peak_mean']
         # x_list = ['LAI3g_early_peak_mean', 'SPEI3_peak', 'SPEI3_late', 'VPD_peak', 'temp_peak',
         #           'VPD_late', 'temp_late', 'sos_std_anomaly']
         # x_list = ['LAI3g_early_peak_mean']
@@ -1315,6 +1358,9 @@ class Carryover_calculation:
         pass
 
 class Carryover_analysis:
+    '''
+        前期greening，后期eos提前的比例
+    '''
 
     def __init__(self):
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Carryover_analysis',
@@ -1323,10 +1369,12 @@ class Carryover_analysis:
 
     def run(self):
         # self.eos_ratio()
-        self.eos_ratio_dynamic()
+        # self.eos_ratio_dynamic()
         # self.eos_pdf()
         # self.late_ratio()
         # self.late_lai_ratio_dynamic()
+        # self.late_lai_ratio_dynamic_two_ranges_of_year()
+        self.early_lai_vs_eos_correlation()
         # self.late_lai_pdf()
         # self.carryover_x_threshold()
         # self.plot_carryover_x_threshold()
@@ -1609,6 +1657,219 @@ class Carryover_analysis:
         plt.xticks(x_list,bin_names,rotation=90)
         plt.tight_layout()
         plt.show()
+
+
+    def late_lai_ratio_dynamic_two_ranges_of_year(self):
+        year_range_list = [(1982, 2000), (2001, 2018), (1982, 2018)]
+        # year_range_list = [(2001, 2018), (1982, 2018)]
+        outdir = join(self.this_class_tif, 'late_lai_ratio_dynamic_two_ranges_of_year')
+        T.mk_dir(outdir, force=True)
+        T.open_path_and_file(outdir)
+        # fdir = '/Volumes/NVME2T/greening_project_redo/Result/carryover_ML/lai3g_pheno'
+        fdir = join(data_root, 'lai3g_pheno')
+        sos_f = join(fdir,'early_start.npy')
+        eos_f = join(fdir,'late_end.npy')
+        lai3g_early_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/early')
+        lai3g_peak_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/peak')
+        lai3g_late_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/late')
+        sos_dict = T.load_npy(sos_f)
+        eos_dict = T.load_npy(eos_f)
+        lai3g_early_dict = T.load_npy_dir(lai3g_early_dir)
+        lai3g_peak_dict = T.load_npy_dir(lai3g_peak_dir)
+        lai3g_late_dict = T.load_npy_dir(lai3g_late_dir)
+        dict_all = {'sos':sos_dict,'eos':eos_dict,'LAI3g_late':lai3g_late_dict,'LAI3g_peak':lai3g_peak_dict,'LAI3g_early':lai3g_early_dict}
+        df = T.spatial_dics_to_df(dict_all)
+        df = Dataframe().add_GLC_landcover_data_to_df(df)
+        df = Dataframe().add_NDVI_mask(df)
+        df = T.add_lon_lat_to_df(df)
+        df = Dataframe().add_early_peak_lai(df)
+        df = df[df['NDVI_MASK']==1]
+        df = df[df['landcover_GLC']!='Crop']
+        df = df[df['lat']>=30]
+
+        # landcover_GLC_list = T.get_df_unique_val_list(df,'landcover_GLC')
+        # print(landcover_GLC_list)
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif=land_tif)
+        # plt.show()
+        # T.print_head_n(df,5)
+        # exit()
+        for year_range in year_range_list:
+            start_year,end_year = year_range
+            for i,row in df.iterrows():
+                # sos_list = row['sos']
+                # eos_list = row['eos']
+                early_peak_mean = row['LAI3g_early_peak_mean']
+                late_lai = row['LAI3g_late']
+
+                early_peak_mean = early_peak_mean[start_year-1982:end_year-1982+1]
+                late_lai = late_lai[start_year-1982:end_year-1982+1]
+
+                # exit()
+                if type(early_peak_mean) == float:
+                    continue
+                if type(late_lai) == float:
+                    continue
+                # print(len(early_peak_mean))
+                # print(len(late_lai))
+                if not len(early_peak_mean) == len(late_lai):
+                    continue
+
+                enhanced_early_peak_mean = []
+                for j in range(len(early_peak_mean)):
+                    if early_peak_mean[j]>0:
+                        enhanced_early_peak_mean.append(j)
+                if len(enhanced_early_peak_mean) == 0:
+                    continue
+
+                late_lai_list = []
+                for j in enhanced_early_peak_mean:
+                    if late_lai[j]>0: # late lai greater than 0
+                        late_lai_list.append(j)
+                ratio = len(late_lai_list)/len(enhanced_early_peak_mean)
+                df.loc[i,'ratio'] = ratio
+            df = Dataframe().add_AI_to_df(df)
+
+            ratio_dict = T.df_to_spatial_dic(df,'ratio')
+            ratio_arr = DIC_and_TIF().pix_dic_to_spatial_arr(ratio_dict)
+            DIC_and_TIF().arr_to_tif(ratio_arr,join(outdir,f'ratio_{start_year}-{end_year}.tif'))
+            # exit()
+            # ratio_arr[ratio_arr<-999] = np.nan
+            # plt.imshow(ratio_arr,cmap='jet_r',interpolation='nearest',vmin=0.5,vmax=1)
+            # plt.colorbar()
+            # plt.figure()
+            # AI_bins = np.linspace(0.1,3.0,21)
+            # # lat_bins = np.linspace(30,90,31)
+            # df_group,bin_names = T.df_bin(df, 'AI', AI_bins)
+            # # df_group,bin_names = T.df_bin(df, 'lat', lat_bins)
+            # x_list = []
+            # y_list = []
+            # yerr_list = []
+            # flag = 0
+            # for name,df_group_i in df_group:
+            #     vals = df_group_i['ratio'].tolist()
+            #     mean = np.nanmean(vals)
+            #     # err = np.nanstd(vals)
+            #     err,_,_ = T.uncertainty_err(vals)
+            #     x_list.append(flag)
+            #     y_list.append(mean)
+            #     yerr_list.append(err)
+            #     flag += 1
+            # plt.errorbar(x_list,y_list,yerr=yerr_list,fmt='o')
+            # plt.xlabel('AI')
+            # plt.ylabel('ratio')
+            # plt.title('AI vs ratio')
+            # plt.xticks(x_list,bin_names,rotation=90)
+            # plt.tight_layout()
+            # plt.show()
+
+    def early_lai_vs_eos_correlation(self):
+        year_range_list = [(1982, 2000), (2001, 2018), (1982, 2018)]
+        # year_range_list = [(2001, 2018), (1982, 2018)]
+        outdir = join(self.this_class_tif, 'early_lai_vs_eos_correlation')
+        T.mk_dir(outdir, force=True)
+        # T.open_path_and_file(outdir)
+        # fdir = '/Volumes/NVME2T/greening_project_redo/Result/carryover_ML/lai3g_pheno'
+        fdir = join(data_root, 'lai3g_pheno')
+        sos_f = join(fdir,'early_start.npy')
+        eos_f = join(fdir,'late_end.npy')
+        lai3g_early_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/early')
+        lai3g_peak_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/peak')
+        lai3g_late_dir = join(Pick_detrended_seasonal_variables_dynamic().this_class_arr,'pick_daily_seasonal/LAI3g/anomaly_detrend/late')
+        lai3g_early_f = '/Users/liyang/Desktop/1982_2018_zscore/during_early_LAI3g_zscore.npy'
+        lai3g_peak_f = '/Users/liyang/Desktop/1982_2018_zscore/during_peak_LAI3g_zscore.npy'
+        lai3g_late_f = '/Users/liyang/Desktop/1982_2018_zscore/during_late_LAI3g_zscore.npy'
+        sos_dict = T.load_npy(sos_f)
+        eos_dict = T.load_npy(eos_f)
+        # lai3g_early_dict = T.load_npy_dir(lai3g_early_dir)
+        # lai3g_peak_dict = T.load_npy_dir(lai3g_peak_dir)
+        # lai3g_late_dict = T.load_npy_dir(lai3g_late_dir)
+        lai3g_early_dict = T.load_npy(lai3g_early_f)
+        lai3g_peak_dict = T.load_npy(lai3g_peak_f)
+        lai3g_late_dict = T.load_npy(lai3g_late_f)
+        dict_all = {'sos':sos_dict,'eos':eos_dict,'LAI3g_late':lai3g_late_dict,'LAI3g_peak':lai3g_peak_dict,'LAI3g_early':lai3g_early_dict}
+        df = T.spatial_dics_to_df(dict_all)
+
+        # df = df.dropna()
+        # T.print_head_n(df,5)
+        # exit()
+        df = Dataframe().add_GLC_landcover_data_to_df(df)
+        df = Dataframe().add_NDVI_mask(df)
+        df = T.add_lon_lat_to_df(df)
+        df = Dataframe().add_early_peak_lai(df)
+        df = df[df['NDVI_MASK']==1]
+        df = df[df['landcover_GLC']!='Crop']
+        df = df[df['lat']>=30]
+
+        # landcover_GLC_list = T.get_df_unique_val_list(df,'landcover_GLC')
+        # print(landcover_GLC_list)
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif=land_tif)
+        # plt.show()
+        # T.print_head_n(df,5)
+        # exit()
+        for year_range in year_range_list:
+            start_year,end_year = year_range
+            for i,row in df.iterrows():
+                # sos_list = row['sos']
+                # eos_list = row['eos']
+                early_peak_mean = row['LAI3g_early_peak_mean']
+                late_lai = row['LAI3g_late']
+                if type(early_peak_mean) == float:
+                    continue
+                if type(late_lai) == float:
+                    continue
+                if len(early_peak_mean) == 0:
+                    continue
+
+                early_peak_mean = early_peak_mean[start_year-1982:end_year-1982+1]
+                late_lai = late_lai[start_year-1982:end_year-1982+1]
+
+
+                if not len(early_peak_mean) == len(late_lai):
+                    continue
+                # try:
+                #     early_peak_mean = T.detrend_vals(early_peak_mean)
+                #     late_lai = T.detrend_vals(late_lai)
+                # except:
+                #     continue
+                try:
+                    a,b,r,p = T.nan_line_fit(early_peak_mean,late_lai)
+                except:
+                    continue
+                df.loc[i,'r'] = r
+            df = Dataframe().add_AI_to_df(df)
+
+            r_dict = T.df_to_spatial_dic(df,'r')
+            r_arr = DIC_and_TIF().pix_dic_to_spatial_arr(r_dict)
+            DIC_and_TIF().arr_to_tif(r_arr,join(outdir,f'r_{start_year}-{end_year}.tif'))
+            # exit()
+            # ratio_arr[ratio_arr<-999] = np.nan
+            # plt.imshow(ratio_arr,cmap='jet_r',interpolation='nearest',vmin=0.5,vmax=1)
+            # plt.colorbar()
+            # plt.figure()
+            # AI_bins = np.linspace(0.1,3.0,21)
+            # # lat_bins = np.linspace(30,90,31)
+            # df_group,bin_names = T.df_bin(df, 'AI', AI_bins)
+            # # df_group,bin_names = T.df_bin(df, 'lat', lat_bins)
+            # x_list = []
+            # y_list = []
+            # yerr_list = []
+            # flag = 0
+            # for name,df_group_i in df_group:
+            #     vals = df_group_i['ratio'].tolist()
+            #     mean = np.nanmean(vals)
+            #     # err = np.nanstd(vals)
+            #     err,_,_ = T.uncertainty_err(vals)
+            #     x_list.append(flag)
+            #     y_list.append(mean)
+            #     yerr_list.append(err)
+            #     flag += 1
+            # plt.errorbar(x_list,y_list,yerr=yerr_list,fmt='o')
+            # plt.xlabel('AI')
+            # plt.ylabel('ratio')
+            # plt.title('AI vs ratio')
+            # plt.xticks(x_list,bin_names,rotation=90)
+            # plt.tight_layout()
+            # plt.show()
 
     def late_lai_pdf(self):
         # fdir = '/Volumes/NVME2T/greening_project_redo/Result/carryover_ML/lai3g_pheno'
@@ -2852,8 +3113,8 @@ def main():
     # Dataframe_One_pix().run()
     # RF().run()
     # Carryover_calculation().run()
-    # Carryover_analysis().run()
-    Variables_analysis().run()
+    Carryover_analysis().run()
+    # Variables_analysis().run()
     # Detrend_variables().run()
     # Pick_detrended_seasonal_variables().run()
     # Pick_detrended_seasonal_variables_dynamic().run()
