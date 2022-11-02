@@ -1,9 +1,6 @@
 # coding=utf-8
 import zipfile
-
-import matplotlib.pyplot as plt
-import traitlets
-
+import xarray as xr
 from __init__ import *
 
 global_land_tif = join(this_root,'conf/land.tif')
@@ -1661,6 +1658,441 @@ class VOD_AMSRU:
                 date_obj_list.append(date_obj)
             np.save(join(outdir_dateobj, f'{year}.npy'), date_obj_list)
 
+
+
+class FLUX_Matt:
+
+    def __init__(self):
+        self.data_dir = join(data_root,'FLUX_Matt')
+        # T.open_path_and_file(self.data_dir)
+        pass
+
+    def run(self):
+        # self.get_site_info()
+        phenology_f = ''
+        fdir = join(self.data_dir,'csv')
+        fpath = join(fdir,'AMF_US-ARc_daily_wMODIS.csv')
+        NDVI_dict = self.get_var_value_dict(fpath,'NDVI')
+        gpp_dict = self.get_var_value_dict(fpath,'GPP_f')
+        date_list = gpp_dict.keys()
+        date_list = list(date_list)
+        date_list.sort()
+        ndvi_list = []
+        gpp_list = []
+        for date in date_list:
+            NDVI = NDVI_dict[date]
+            gpp = gpp_dict[date]
+            ndvi_list.append(NDVI)
+            gpp_list.append(gpp)
+        plt.plot(date_list,ndvi_list,label='NDVI',color='r')
+        plt.legend()
+        plt.twinx()
+        plt.plot(date_list,gpp_list,label='GPP',color='b')
+        plt.legend()
+        plt.show()
+        exit()
+
+
+    def get_site_info(self):
+        f = join(self.data_dir,'Ameriflux_site_info.csv')
+        df = pd.read_csv(f)
+        T.print_head_n(df)
+
+    def get_var_value_dict(self,csv_f,variable):
+        df_i = pd.read_csv(csv_f)
+        value_dict = {}
+        for i,row in df_i.iterrows():
+            year = row['Year']
+            doy = row['DoY']
+            year = int(year)
+            doy = int(doy)
+            value = row[variable]
+            date_obj = datetime.datetime(year,1,1) + datetime.timedelta(doy - 1)
+            value_dict[date_obj] = value
+        return value_dict
+
+
+
+class Terraclimate:
+    def __init__(self):
+        data_root = '/Volumes/NVME2T/greening_project_redo/data/'
+        self.datadir = join(data_root,'Terraclimate')
+        pass
+
+    def run(self):
+        # self.nc_to_tif_srad()
+        # self.resample()
+        # self.per_pix()
+        self.extract_seasonal_period()
+        pass
+
+    def nc_to_tif_srad(self):
+        outdir = self.datadir + '/srad/tif/'
+        T.mk_dir(outdir,force=True)
+        fdir = self.datadir + '/srad/nc11/'
+        for fi in T.listdir(fdir):
+            print(fi)
+            if fi.startswith('.'):
+                continue
+            f = fdir + fi
+            year = fi.split('.')[-2].split('_')[-1]
+            # print(year)
+            # exit()
+            ncin = Dataset(f, 'r')
+            ncin_xarr = xr.open_dataset(f)
+            # print(ncin.variables)
+            # exit()
+            lat = ncin['lat']
+            lon = ncin['lon']
+            pixelWidth = lon[1] - lon[0]
+            pixelHeight = lat[1] - lat[0]
+            longitude_start = lon[0]
+            latitude_start = lat[0]
+            time = ncin.variables['time']
+
+            start = datetime.datetime(1900, 1, 1)
+            # print(time)
+            # for t in time:
+            #     print(t)
+            # exit()
+            flag = 0
+            for i in tqdm(range(len(time))):
+                # print(i)
+                flag += 1
+                # print(time[i])
+                date = start + datetime.timedelta(days=int(time[i]))
+                year = str(date.year)
+                # exit()
+                month = '%02d' % date.month
+                day = '%02d'%date.day
+                date_str = year + month
+                newRasterfn = outdir + date_str + '.tif'
+                if os.path.isfile(newRasterfn):
+                    continue
+                # print(date_str)
+                # exit()
+                # if not date_str[:4] in valid_year:
+                #     continue
+                # print(date_str)
+                # exit()
+                # arr = ncin.variables['tmax'][i]
+                arr = ncin_xarr['srad'][i]
+                arr = np.array(arr)
+                # print(arr)
+                # grid = arr < 99999
+                # arr[np.logical_not(grid)] = -999999
+                newRasterfn = outdir + date_str + '.tif'
+                ToRaster().array2raster(newRasterfn, longitude_start, latitude_start, pixelWidth, pixelHeight, arr)
+                # grid = np.ma.masked_where(grid>1000,grid)
+                # DIC_and_TIF().arr_to_tif(arr,newRasterfn)
+                # plt.imshow(arr,'RdBu')
+                # plt.colorbar()
+                # plt.show()
+                # nc_dic[date_str] = arr
+                # exit()
+
+    def resample(self):
+        fdir = join(self.datadir, 'srad/tif')
+        outdir = join(self.datadir, 'srad/tif_05')
+        T.mk_dir(outdir, force=True)
+        for f in T.listdir(fdir):
+            fpath = join(fdir, f)
+            outpath = join(outdir, f)
+            ToRaster().resample_reproj(fpath, outpath, res=0.5)
+        pass
+
+    def per_pix(self):
+        fdir = join(self.datadir, 'srad/tif_05')
+        outdir = join(self.datadir, 'srad/per_pix_05')
+        T.mk_dir(outdir, force=True)
+        Pre_Process().data_transform(fdir, outdir)
+
+    def extract_seasonal_period(self):
+        fdir = join(self.datadir, 'srad/per_pix_05')
+        outdir = join(self.datadir, 'srad/extract_seasonal_period')
+        T.mk_dir(outdir, force=True)
+        dict_all = T.load_npy_dir(fdir)
+        period_dict = {
+            'early':(4,5,6),
+            'peak':(7,8),
+            'late':(9,10)
+        }
+        for period in period_dict:
+            outf = join(outdir,period)
+            spatial_dict = {}
+            for pix in tqdm(dict_all,desc=period):
+                r,c = pix
+                if r > 120:
+                    continue
+                vals = dict_all[pix]
+                vals[vals < -9999] = np.nan
+                if T.is_all_nan(vals):
+                    continue
+                period_months = period_dict[period]
+                annual_vals = T.monthly_vals_to_annual_val(vals,period_months)
+                annual_vals_anomaly = Pre_Process().z_score(annual_vals)
+                spatial_dict[pix] = annual_vals_anomaly
+            T.save_npy(spatial_dict,outf)
+
+
+class ERA:
+    def __init__(self):
+        data_root = '/Volumes/NVME2T/greening_project_redo/data/'
+        self.datadir = join(data_root, 'ERA')
+        pass
+
+    def run(self):
+        # self.nc_to_array()
+        # self.array_to_tif()
+        # self.resample()
+        # self.unit_convert()
+        # self.per_pix()
+        self.extract_late_period()
+
+        pass
+
+    def nc_to_array(self):
+        outdir = join(self.datadir, 'array')
+        T.mk_dir(outdir, force=True)
+        fdir = join(self.datadir, 'nc')
+        fpath = join(fdir, 'srad.nc')
+        self.__nc_to_array(fpath, 'ssrd', outdir)
+
+    def __nc_to_array(self, fname, var_name, outdir):
+        try:
+            ncin = Dataset(fname, 'r')
+            print(ncin.variables.keys())
+        except:
+            raise UserWarning('File not supported: ' + fname)
+        try:
+            time_list = ncin.variables['time_counter'][:]
+            basetime_str = ncin.variables['time_counter'].units
+        except:
+            time_list = ncin.variables['time'][:]
+            basetime_str = ncin.variables['time'].units
+        print(ncin.variables)
+        exit()
+
+        data = ncin.variables[var_name]
+        for time_i in tqdm(range(len(time_list))):
+            fpath = join(self.datadir, 'array', f'{time_i}.npy')
+            arr = data[time_i]
+            arr = np.array(arr)
+            np.save(fpath, arr)
+
+    def array_to_tif(self):
+        fdir = join(self.datadir,'array')
+        nc_path = join(self.datadir, 'nc/srad.nc')
+        outdir = join(self.datadir,'tif')
+        self.kernel1_array_to_tif(nc_path,'ssrd',outdir)
+
+    def kernel2_array_to_tif(self,params):
+        time_i,basetime_unit,basetime,time_list,xx,yy,outdir = params
+        fpath = join(self.datadir, 'array', f'{time_i}.npy')
+        # basetime_unit, basetime, time_list, xx, yy, data, outdir, var_name, time_i = params
+        if basetime_unit == 'days':
+            date = basetime + datetime.timedelta(days=int(time_list[time_i]))
+        elif basetime_unit == 'years':
+            date1 = basetime.strftime('%Y-%m-%d')
+            base_year = basetime.year
+            date2 = f'{int(base_year + time_list[time_i])}-01-01'
+            delta_days = Tools().count_days_of_two_dates(date1, date2)
+            date = basetime + datetime.timedelta(days=delta_days)
+        elif basetime_unit == 'month' or basetime_unit == 'months':
+            date1 = basetime.strftime('%Y-%m-%d')
+            base_year = basetime.year
+            base_month = basetime.month
+            date2 = f'{int(base_year + time_list[time_i] // 12)}-{int(base_month + time_list[time_i] % 12)}-01'
+            delta_days = Tools().count_days_of_two_dates(date1, date2)
+            date = basetime + datetime.timedelta(days=delta_days)
+        elif basetime_unit == 'seconds':
+            date = basetime + datetime.timedelta(seconds=int(time_list[time_i]))
+        elif basetime_unit == 'hours':
+            date = basetime + datetime.timedelta(hours=int(time_list[time_i]))
+        else:
+            raise Exception('basetime unit not supported')
+        time_str = time_list[time_i]
+        mon = date.month
+        year = date.year
+        day = date.day
+        outf_name = f'{year}{mon:02d}{day:02d}.tif'
+        outpath = join(outdir, outf_name)
+        if os.path.isfile(outpath):
+            return
+        arr = np.load(fpath)
+        arr = np.array(arr)
+        lon_list = []
+        lat_list = []
+        value_list = []
+        for i in range(len(arr)):
+            for j in range(len(arr[i])):
+                lon_i = xx[i][j]
+                if lon_i > 180:
+                    lon_i -= 360
+                lat_i = yy[i][j]
+                value_i = arr[i][j]
+                lon_list.append(lon_i)
+                lat_list.append(lat_i)
+                value_list.append(value_i)
+        DIC_and_TIF().lon_lat_val_to_tif(lon_list, lat_list, value_list, outpath)
+
+    def kernel1_array_to_tif(self, fname, var_name, outdir,njobs=6):
+        try:
+            ncin = Dataset(fname, 'r')
+
+        except:
+            raise UserWarning('File not supported: ' + fname)
+        try:
+            lat = ncin.variables['lat'][:]
+            lon = ncin.variables['lon'][:]
+        except:
+            try:
+                lat = ncin.variables['latitude'][:]
+                lon = ncin.variables['longitude'][:]
+            except:
+                try:
+                    lat = ncin.variables['lat_FULL'][:]
+                    lon = ncin.variables['lon_FULL'][:]
+                except:
+                    raise UserWarning('lat or lon not found')
+        shape = np.shape(lat)
+        try:
+            time_list = ncin.variables['time_counter'][:]
+            basetime_str = ncin.variables['time_counter'].units
+        except:
+            time_list = ncin.variables['time'][:]
+            basetime_str = ncin.variables['time'].units
+
+        basetime_unit = basetime_str.split('since')[0]
+        basetime_unit = basetime_unit.strip()
+        # print(basetime_unit)
+        # print(basetime_str)
+        if basetime_unit == 'days':
+            timedelta_unit = 'days'
+        elif basetime_unit == 'years':
+            timedelta_unit = 'years'
+        elif basetime_unit == 'month':
+            timedelta_unit = 'month'
+        elif basetime_unit == 'months':
+            timedelta_unit = 'month'
+        elif basetime_unit == 'seconds':
+            timedelta_unit = 'seconds'
+        elif basetime_unit == 'hours':
+            timedelta_unit = 'hours'
+        else:
+            raise Exception('basetime unit not supported')
+        basetime = basetime_str.strip(f'{timedelta_unit} since ')
+        try:
+            basetime = datetime.datetime.strptime(basetime, '%Y-%m-%d')
+        except:
+            try:
+                basetime = datetime.datetime.strptime(basetime, '%Y-%m-%d %H:%M:%S')
+            except:
+                try:
+                    basetime = datetime.datetime.strptime(basetime, '%Y-%m-%d %H:%M:%S.%f')
+                except:
+                    try:
+                        basetime = datetime.datetime.strptime(basetime, '%Y-%m-%d %H:%M')
+                    except:
+                        try:
+                            basetime = datetime.datetime.strptime(basetime, '%Y-%m')
+                        except:
+                            raise UserWarning('basetime format not supported')
+
+        if len(shape) == 2:
+            xx, yy = lon, lat
+        else:
+            xx, yy = np.meshgrid(lon, lat)
+        # data = ncin.variables[var_name]
+        T.mk_dir(outdir, force=True)
+        parmas_list = []
+        for time_i in tqdm(range(len(time_list))):
+            param = [time_i,basetime_unit,basetime,time_list,xx,yy,outdir]
+            parmas_list.append(param)
+        MULTIPROCESS(self.kernel2_array_to_tif,parmas_list).run(process=njobs)
+
+
+    def resample(self):
+        fdir = join(self.datadir, 'tif')
+        outdir = join(self.datadir, 'tif_05')
+        T.mk_dir(outdir, force=True)
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            outpath = join(outdir,f)
+            ToRaster().resample_reproj(fpath, outpath, res=0.5)
+
+    def unit_convert(self):
+        '''
+        scale_factor: 623.5732836891337
+        add_offset: 20432002.213358156
+        _FillValue: -32767
+        missing_value: -32767
+        units: Jm ** -2
+        :return:
+        '''
+        fdir = join(self.datadir, 'tif_05')
+        outdir = join(self.datadir, 'tif_05_unit_convert')
+        T.mk_dir(outdir, force=True)
+        for f in tqdm(T.listdir(fdir)):
+            if not f.endswith('.tif'):
+                continue
+            fpath = join(fdir,f)
+            outpath = join(outdir,f)
+            arr = ToRaster().raster2array(fpath)[0]
+            arr[arr==-32767] = np.nan
+            arr = (arr + 20432002.213358156)/623.5732836891337
+            DIC_and_TIF().arr_to_tif(arr, outpath)
+
+    def per_pix(self):
+        fdir = join(self.datadir, 'tif_05_unit_convert')
+        outdir = join(self.datadir, 'per_pix_05')
+        T.mk_dir(outdir, force=True)
+        Pre_Process().data_transform(fdir, outdir)
+
+    def calculate_par(self):
+        fdir = join(self.datadir, 'per_pix_05')
+        outdir = join(self.datadir, 'par_05')
+        T.mk_dir(outdir, force=True)
+        dict_all = T.load_npy_dir(fdir)
+        for pix in dict_all:
+            vals = dict_all[pix]
+            vals[vals < -9999] = np.nan
+            if T.is_all_nan(vals):
+                continue
+            vals = vals * 0.5
+        pass
+
+    def extract_seasonal_period(self):
+        fdir = join(self.datadir, 'per_pix_05')
+        outdir = join(self.datadir, 'extract_seasonal_period')
+        T.mk_dir(outdir, force=True)
+        dict_all = T.load_npy_dir(fdir)
+        period_dict = {
+            'early':(4,5,6),
+            'peak':(7,8),
+            'late':(9,10)
+        }
+        for period in period_dict:
+            outf = join(outdir,period)
+            spatial_dict = {}
+            for pix in tqdm(dict_all,desc=period):
+                r,c = pix
+                if r > 120:
+                    continue
+                vals = dict_all[pix]
+                vals[vals < -9999] = np.nan
+                if T.is_all_nan(vals):
+                    continue
+                period_months = period_dict[period]
+                annual_vals = T.monthly_vals_to_annual_val(vals,period_months)
+                annual_vals_anomaly = Pre_Process().z_score(annual_vals)
+                spatial_dict[pix] = annual_vals_anomaly
+            T.save_npy(spatial_dict,outf)
+
+
+
+
+
 def main():
     # LAI().run()
     # seasonal_split_ly_NDVI()
@@ -1675,7 +2107,10 @@ def main():
     # MODIS_LAI_BU_CMG().run()
     # TRENDY().run()
     # VODCA_GPP().run()
-    VOD_AMSRU().run()
+    # VOD_AMSRU().run()
+    # FLUX_Matt().run()
+    Terraclimate().run()
+    # ERA().run()
     # check_cci_sm()
     # f = '/Volumes/NVME2T/greening_project_redo/data/GEE_AVHRR_LAI/per_pix_clean/per_pix_dic_005.npy'
     # dic = T.load_npy(f)
