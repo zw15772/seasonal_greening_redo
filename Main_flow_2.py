@@ -1,4 +1,6 @@
 # coding=utf-8
+import matplotlib.pyplot as plt
+
 from __init__ import *
 result_root_this_script = join(results_root, 'Main_flow_2')
 global_land_tif = join(this_root,'conf/land.tif')
@@ -8,8 +10,6 @@ global_season_dic = [
     'peak',
     'late',
 ]
-
-
 
 class Phenology_plot_LAI3g:
 
@@ -232,7 +232,7 @@ class Seasonal_variables:
         pass
 
     def run(self):
-        # self.pick_seasonal_values()
+        self.pick_seasonal_values()
         # self.pick_seasonal_values_VODCAGPP()
         # self.pick_seasonal_values_VOD_AMSRU()
         # self.calculate_anomaly()
@@ -561,10 +561,16 @@ class Trend:
         # self.LAI3g_df()
         # self.VODCA_GPP_df()
         # self.AMSRU_VOD_df()
+        # self.Temp_df()
         # self.phenology_df()
         # self.trend_tif('VODCA_GPP')
-        self.trend_tif('AMSRU_VOD')
+        # self.trend_tif('AMSRU_VOD')
         # self.trend_tif('LAI3g')
+        # self.trend_tif('temp')
+        # self.late_Temp_trend_two_periods()
+        # self.plot_late_Temp_trend_two_periods_tif()
+        # self.check_wen_data()
+        self.check_era_and_terraclimate()
         pass
 
     def LAI3g_df(self):
@@ -641,6 +647,30 @@ class Trend:
         T.save_df(df,outf)
         T.df_to_excel(df,outf)
 
+    def Temp_df(self):
+        fdir = join(Seasonal_variables().this_class_arr,'pick_seasonal_values/temp')
+        outdir = join(self.this_class_arr,'temp')
+        T.mk_dir(outdir,force=True)
+        T.open_path_and_file(outdir)
+        period_list = ['early','peak','late']
+        result_df = []
+        for period in period_list:
+            fdir_i = join(fdir,'origin',period)
+            dict_i = T.load_npy_dir(fdir_i)
+            result_dict = {}
+            for pix in dict_i:
+                vals = dict_i[pix]
+                a, b, r, p = T.nan_line_fit(list(range(len(vals))),vals)
+                result_dict_i = {f'{period}_a':a,f'{period}_b':b,f'{period}_r':r,f'{period}_p':p}
+                result_dict[pix] = result_dict_i
+            df_i = T.dic_to_df(result_dict,'pix')
+            result_df.append(df_i)
+        df = pd.DataFrame()
+        df = T.join_df_list(df,result_df,'pix')
+        outf = join(outdir,'dataframe.df')
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
     def phenology_df(self):
         phenology_dir = join(data_root,'lai3g_pheno')
         outdir = join(self.this_class_arr, 'phenology')
@@ -701,6 +731,142 @@ class Trend:
             outf_p = join(outdir, f'{variable}_{period}_p.tif')
             arr_a = DIC_and_TIF().pix_dic_to_tif(a_dict, outf_a)
             arr_p = DIC_and_TIF().pix_dic_to_tif(p_dict, outf_p)
+
+    def late_Temp_trend_two_periods(self):
+        fdir = join(Seasonal_variables().this_class_arr, 'pick_seasonal_values/temp')
+        outdir = join(self.this_class_arr, 'temp')
+        T.mk_dir(outdir, force=True)
+        # T.open_path_and_file(outdir)
+        # year_range_list = [(1982,2001),(2002,2020)]
+        year_range_list = [(2002,2020)]
+        period_list = ['early', 'peak', 'late']
+        result_df = []
+        for year_range in year_range_list:
+            for period in period_list:
+                fdir_i = join(fdir, 'origin', period)
+                dict_i = T.load_npy_dir(fdir_i)
+                result_dict = {}
+                for pix in dict_i:
+                    vals = dict_i[pix]
+                    vals_i = []
+                    for year in range(year_range[0],year_range[1]+1):
+                        print(year)
+                        vals_i.append(vals[year-1982])
+                    exit()
+
+                    a, b, r, p = T.nan_line_fit(list(range(len(vals_i))), vals_i)
+                    result_dict_i = {f'{period}_{year_range[0]}-{year_range[1]}_a':a,
+                                     f'{period}_{year_range[0]}-{year_range[1]}_b':b,
+                                     f'{period}_{year_range[0]}-{year_range[1]}_r':r,
+                                     f'{period}_{year_range[0]}-{year_range[1]}_p':p}
+                    result_dict[pix] = result_dict_i
+                df_i = T.dic_to_df(result_dict, 'pix')
+                result_df.append(df_i)
+        df = pd.DataFrame()
+        df = T.join_df_list(df, result_df, 'pix')
+        outf = join(outdir, 'dataframe.df')
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+        pass
+
+    def plot_late_Temp_trend_two_periods_tif(self):
+        variable = 'temp'
+        outdir = join(self.this_class_tif, variable)
+        T.mk_dir(outdir, force=True)
+        T.open_path_and_file(outdir)
+        dff = join(self.this_class_arr, variable, 'dataframe.df')
+        df = T.load_df(dff)
+        T.print_head_n(df, 5)
+        year_range_list = [(1982, 2001), (2002, 2020)]
+        # year_range_list = [(2002,2020)]
+        for year_range in year_range_list:
+            period_list = ['early', 'peak', 'late']
+            for period in period_list:
+                a_dict = T.df_to_spatial_dic(df, f'{period}_{year_range[0]}-{year_range[1]}_a')
+                p_dict = T.df_to_spatial_dic(df, f'{period}_{year_range[0]}-{year_range[1]}_p')
+                outf_a = join(outdir, f'{variable}_{period}_{year_range[0]}-{year_range[1]}_a.tif')
+                outf_p = join(outdir, f'{variable}_{period}_{year_range[0]}-{year_range[1]}_p.tif')
+                arr_a = DIC_and_TIF().pix_dic_to_tif(a_dict, outf_a)
+                arr_p = DIC_and_TIF().pix_dic_to_tif(p_dict, outf_p)
+        pass
+
+
+    def check_wen_data(self):
+        fdir = join(temporary_root,'temperature_epl_wen/temperature')
+        outdir = join(temporary_root,'temperature_epl_wen/temperature_trend')
+        T.mk_dir(outdir,force=True)
+        period_list = ['early','peak','late']
+        year_range_list = [(1982,2000),(2001,2018)]
+        for year_range in year_range_list:
+            print(year_range)
+            for period in period_list:
+                outdir_period = join(outdir,period)
+                T.mk_dir(outdir_period,force=True)
+                fpath = join(fdir,f'during_{period}_Temp.npy')
+                dict_i = T.load_npy(fpath)
+                spatial_dict_a = {}
+                spatial_dict_p = {}
+                for pix in dict_i:
+                    vals = dict_i[pix]
+                    if len(vals) != 37:
+                        continue
+                    vals_i = []
+                    for year in range(year_range[0],year_range[1]+1):
+                        vals_i.append(vals[year-1982])
+                    a,b,r,p = T.nan_line_fit(list(range(len(vals_i))),vals_i)
+                    spatial_dict_a[pix] = a
+                    spatial_dict_p[pix] = p
+                outf_a = join(outdir_period,f'{period}_{year_range[0]}-{year_range[1]}_a.tif')
+                outf_p = join(outdir_period,f'{period}_{year_range[0]}-{year_range[1]}_p.tif')
+                DIC_and_TIF().pix_dic_to_tif(spatial_dict_a,outf_a)
+                DIC_and_TIF().pix_dic_to_tif(spatial_dict_p,outf_p)
+
+    def check_era_and_terraclimate(self):
+        outdir = join(temporary_root,'check_era_and_terraclimate')
+        T.mk_dir(outdir,force=True)
+        # T.open_path_and_file(outdir)
+        arr_background = np.array([1]*720*360).reshape(360,720)
+        DIC_and_TIF(originX=-180.,pixelsize=0.5).arr_to_tif(arr_background,join(outdir,'background.tif'))
+        exit()
+        f_terra = '/Volumes/NVME2T/greening_project_redo/data/terraclimate/srad/extract_seasonal_period/late.npy'
+        f_era = '/Volumes/NVME2T/greening_project_redo/data/ERA/extract_seasonal_period/late.npy'
+        f_wen = '/Volumes/NVME2T/greening_project_redo/data/1982_2018_final_wen/during_late_PAR_zscore.npy'
+
+        dict_terra = T.load_npy(f_terra)
+        dict_era = T.load_npy(f_era)
+        dict_wen = T.load_npy(f_wen)
+
+        spatial_dict1 = {}
+        spatial_dict2 = {}
+        spatial_dict3 = {}
+        for pix in tqdm(dict_terra):
+            vals_terra = dict_terra[pix]
+            if not pix in dict_era:
+                continue
+            if not pix in dict_wen:
+                continue
+            vals_era = dict_era[pix]
+            vals_wen = dict_wen[pix]
+            try:
+                r1,p = stats.pearsonr(vals_terra, vals_era)
+            except:
+                r1 = np.nan
+            try:
+                r2,p = stats.pearsonr(vals_terra,vals_wen)
+            except:
+                r2 = np.nan
+            try:
+                r3,p = stats.pearsonr(vals_era,vals_wen)
+            except:
+                r3 = np.nan
+            spatial_dict1[pix] = r1
+            spatial_dict2[pix] = r2
+            spatial_dict3[pix] = r3
+        DIC_and_TIF().pix_dic_to_tif(spatial_dict1,join(outdir,'terra_era.tif'))
+        DIC_and_TIF().pix_dic_to_tif(spatial_dict2,join(outdir,'terra_wen.tif'))
+        DIC_and_TIF().pix_dic_to_tif(spatial_dict3,join(outdir,'era_wen.tif'))
+
+        pass
 
 
 
@@ -936,6 +1102,7 @@ class Dataframe_func:
         df = self.add_NDVI_mask(df)
         print('add Aridity Index')
         df = self.add_AI_to_df(df)
+        df = self.add_Humid_nonhumid(df)
         df = self.clean_df(df)
         self.df = df
 
@@ -1016,6 +1183,38 @@ class Dataframe_func:
         p_pet_dic = self.P_PET_ratio(P_PET_fdir)
         df = T.add_spatial_dic_to_df(df, p_pet_dic, 'AI')
         return df
+
+    def P_PET_class(self,df):
+        dic = T.df_to_spatial_dic(df, 'AI')
+        dic_reclass = {}
+        for pix in dic:
+            val = dic[pix]
+            label = None
+            # label = np.nan
+            if val > 0.65:
+                label = 'Humid'
+                # label = 3
+            elif val < 0.2:
+                label = 'Arid'
+                # label = 0
+            elif val > 0.2 and val < 0.5:
+                label = 'Semi Arid'
+                # label = 1
+            elif val > 0.5 and val < 0.65:
+                label = 'Semi Humid'
+                # label = 2
+            dic_reclass[pix] = label
+        return dic_reclass
+
+    def add_Humid_nonhumid(self,df):
+        P_PET_dic_reclass = self.P_PET_class(df)
+        df = T.add_spatial_dic_to_df(df,P_PET_dic_reclass,'HI_reclass')
+        df = T.add_spatial_dic_to_df(df, P_PET_dic_reclass, 'HI_class')
+        df = df.dropna(subset=['HI_class'])
+        df.loc[df['HI_reclass'] != 'Humid', ['HI_reclass']] = 'Dry'
+        return df
+
+
     def P_PET_ratio(self, P_PET_fdir):
         outf = join(temporary_root, 'P_PET_ratio_dic.npy')
         if os.path.exists(outf):
@@ -1491,11 +1690,11 @@ def main():
     # Phenology().run()
     # Phenology_plot_AMSRU_VOD().run()
     # Seasonal_variables().run()
-    # Trend().run()
+    Trend().run()
     # Time_series().run()
     # Sankey_plot().run()
     # Dataframe_daily().run()
-    Carryover_AMSRU_VOD_GPP().run()
+    # Carryover_AMSRU_VOD_GPP().run()
     pass
 
 if __name__ == '__main__':
