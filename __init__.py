@@ -4,6 +4,7 @@ version = sys.version_info.major
 assert version == 3, 'Python Version Error'
 
 from lytools import *
+
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import interpolate
@@ -70,7 +71,6 @@ this_root = '/Volumes/SSD1T/seasonal_greening/'
 data_root = this_root + 'data/'
 results_root = this_root + 'result/'
 temporary_root = this_root + 'temporary/'
-
 '''
 pip install xgboost
 No such file or directory: 'cmake'

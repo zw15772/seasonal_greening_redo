@@ -570,7 +570,8 @@ class Trend:
         # self.late_Temp_trend_two_periods()
         # self.plot_late_Temp_trend_two_periods_tif()
         # self.check_wen_data()
-        self.check_era_and_terraclimate()
+        # self.check_era_and_terraclimate()
+        self.check_wen_data_spei()
         pass
 
     def LAI3g_df(self):
@@ -868,6 +869,22 @@ class Trend:
 
         pass
 
+    def check_wen_data_spei(self):
+        season = 'late'
+        # season = 'peak'
+        # f = f'/Volumes/NVME2T/greening_project_redo/data/1982_2018_final_wen/during_{season}_SPEI3_zscore.npy'
+        f = f'/Volumes/NVME2T/greening_project_redo/data/1982_2018_final_wen/during_{season}_LAI3g_zscore.npy'
+        dict_i = T.load_npy(f)
+        spatial_dict = {}
+        for pix in tqdm(dict_i):
+            vals = dict_i[pix]
+            if len(vals) != 37:
+                continue
+            a,b,r,p = T.nan_line_fit(list(range(len(vals))),vals)
+            spatial_dict[pix] = a
+        # DIC_and_TIF().pix_dic_to_tif(spatial_dict,join(temporary_root,f'{season}_spei.tif'))
+        DIC_and_TIF().pix_dic_to_tif(spatial_dict,join(temporary_root,f'{season}_LAI3g.tif'))
+        pass
 
 
 class Time_series:
@@ -1103,6 +1120,8 @@ class Dataframe_func:
         print('add Aridity Index')
         df = self.add_AI_to_df(df)
         df = self.add_Humid_nonhumid(df)
+        print('add_energy_water_ltd_area')
+        df = self.add_energy_water_ltd_area(df)
         df = self.clean_df(df)
         self.df = df
 
@@ -1212,6 +1231,24 @@ class Dataframe_func:
         df = T.add_spatial_dic_to_df(df, P_PET_dic_reclass, 'HI_class')
         df = df.dropna(subset=['HI_class'])
         df.loc[df['HI_reclass'] != 'Humid', ['HI_reclass']] = 'Dry'
+        return df
+
+    def add_energy_water_ltd_area(self,df):
+        tif = '/Volumes/NVME2T/hotcold_drought/results/Main_flow_remote_sensing/tif/Limited_area/limited_area_class_tif/SPEI-T.tif'
+        spatial_dict = DIC_and_TIF().spatial_tif_to_dic(tif)
+        new_spacial_dict = {}
+        for pix in spatial_dict:
+            val = spatial_dict[pix]
+            if np.isnan(val):
+                continue
+            if val == 0:
+                new_spacial_dict[pix] = 'Non-sig'
+            elif val == 1:
+                new_spacial_dict[pix] = 'energy-limited'
+            else:
+                new_spacial_dict[pix] = 'water-limited'
+        df = T.add_spatial_dic_to_df(df, new_spacial_dict, 'limited_area')
+
         return df
 
 
