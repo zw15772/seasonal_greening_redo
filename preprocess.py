@@ -1,8 +1,11 @@
 # coding=utf-8
+import time
 import zipfile
+
+import matplotlib.pyplot as plt
 import xarray as xr
 from __init__ import *
-
+import scipy.io as sio
 global_land_tif = join(this_root,'conf/land.tif')
 global_start_year = 1982
 # global_end_year = 2018
@@ -71,191 +74,191 @@ vars_info_dic = {
 },
         }
 
-class HANTS:
-
-    def __init__(self):
-        '''
-        HANTS algorithm for time series smoothing
-        '''
-        pass
-
-    def hants_interpolate(self, values_list, dates_list, valid_range): # todo: need to change to 1D values
-        '''
-        :param values_list: 2D array of values
-        :param dates_list:  2D array of dates, datetime objects
-        :param valid_range: min and max valid values, (min, max)
-        :return: Dictionary of smoothed values, key: year, value: smoothed value
-        '''
-        year_list = []
-        for date in dates_list:
-            year = date[0].year
-            if year not in year_list:
-                year_list.append(year)
-        values_list = np.array(values_list)
-        std_list = []
-        for vals in values_list:
-            std = np.std(vals)
-            std_list.append(std)
-        std = np.mean(std_list)
-        std = 2. * std # larger than twice the standard deviation of the input data is rejected
-        interpolated_values_list = []
-        for i,values in enumerate(values_list):
-            dates = dates_list[i]
-            xnew, ynew = self.__interp_values_to_DOY(values, dates)
-            interpolated_values_list.append(ynew)
-
-        interpolated_values_list = np.array(interpolated_values_list)
-        results = HANTS().__hants(sample_count=365, inputs=interpolated_values_list, low=valid_range[0], high=valid_range[1],
-                                fit_error_tolerance=std)
-        # plt.imshow(interpolated_values_list, aspect='auto',vmin=0,vmax=3)
-        # plt.colorbar()
-        #
-        # plt.figure()
-        # plt.imshow(results, aspect='auto',vmin=0,vmax=3)
-        # plt.colorbar()
-        # plt.show()
-        results_dict = dict(zip(year_list, results))
-        return results_dict
-
-    def __date_list_to_DOY(self,date_list):
-        '''
-        :param date_list: list of datetime objects
-        :return:
-        '''
-        start_year = date_list[0].year
-        start_date = datetime.datetime(start_year, 1, 1)
-        date_delta = date_list - start_date + datetime.timedelta(days=1)
-        DOY = [date.days for date in date_delta]
-        return DOY
-
-    def __interp_values_to_DOY(self, values, date_list):
-        DOY = self.__date_list_to_DOY(date_list)
-        inx = DOY
-        iny = values
-        x_new = list(range(1, 366))
-        func = interpolate.interp1d(inx, iny, fill_value="extrapolate")
-        y_new = func(x_new)
-        return x_new, y_new
-
-    def __makediag3d(self,M):
-        b = np.zeros((M.shape[0], M.shape[1] * M.shape[1]))
-        b[:, ::M.shape[1] + 1] = M
-        return b.reshape((M.shape[0], M.shape[1], M.shape[1]))
-
-    def __get_starter_matrix(self,base_period_len, sample_count, frequencies_considered_count):
-        nr = min(2 * frequencies_considered_count + 1,
-                 sample_count)  # number of 2*+1 frequencies, or number of input images
-        mat = np.zeros(shape=(nr, sample_count))
-        mat[0, :] = 1
-        ang = 2 * np.pi * np.arange(base_period_len) / base_period_len
-        cs = np.cos(ang)
-        sn = np.sin(ang)
-        # create some standard sinus and cosinus functions and put in matrix
-        i = np.arange(1, frequencies_considered_count + 1)
-        ts = np.arange(sample_count)
-        for column in range(sample_count):
-            index = np.mod(i * ts[column], base_period_len)
-            # index looks like 000, 123, 246, etc, until it wraps around (for len(i)==3)
-            mat[2 * i - 1, column] = cs.take(index)
-            mat[2 * i, column] = sn.take(index)
-        return mat
-
-    def __hants(self,sample_count, inputs,
-              frequencies_considered_count=3,
-              outliers_to_reject='Hi',
-              low=0., high=255,
-              fit_error_tolerance=5.,
-              delta=0.1):
-        """
-        Function to apply the Harmonic analysis of time series applied to arrays
-        sample_count    = nr. of images (total number of actual samples of the time series)
-        base_period_len    = length of the base period, measured in virtual samples
-                (days, dekads, months, etc.)
-        frequencies_considered_count    = number of frequencies to be considered above the zero frequency
-        inputs     = array of input sample values (e.g. NDVI values)
-        ts    = array of size sample_count of time sample indicators
-                (indicates virtual sample number relative to the base period);
-                numbers in array ts maybe greater than base_period_len
-                If no aux file is used (no time samples), we assume ts(i)= i,
-                where i=1, ..., sample_count
-        outliers_to_reject  = 2-character string indicating rejection of high or low outliers
-                select from 'Hi', 'Lo' or 'None'
-        low   = valid range minimum
-        high  = valid range maximum (values outside the valid range are rejeced
-                right away)
-        fit_error_tolerance   = fit error tolerance (points deviating more than fit_error_tolerance from curve
-                fit are rejected)
-        dod   = degree of overdeterminedness (iteration stops if number of
-                points reaches the minimum required for curve fitting, plus
-                dod). This is a safety measure
-        delta = small positive number (e.g. 0.1) to suppress high amplitudes
-        """
-        # define some parameters
-        base_period_len = sample_count  #
-
-        # check which setting to set for outlier filtering
-        if outliers_to_reject == 'Hi':
-            sHiLo = -1
-        elif outliers_to_reject == 'Lo':
-            sHiLo = 1
-        else:
-            sHiLo = 0
-
-        nr = min(2 * frequencies_considered_count + 1,
-                 sample_count)  # number of 2*+1 frequencies, or number of input images
-
-        # create empty arrays to fill
-        outputs = np.zeros(shape=(inputs.shape[0], sample_count))
-
-        mat = self.__get_starter_matrix(base_period_len, sample_count, frequencies_considered_count)
-
-        # repeat the mat array over the number of arrays in inputs
-        # and create arrays with ones with shape inputs where high and low values are set to 0
-        mat = np.tile(mat[None].T, (1, inputs.shape[0])).T
-        p = np.ones_like(inputs)
-        p[(low >= inputs) | (inputs > high)] = 0
-        nout = np.sum(p == 0, axis=-1)  # count the outliers for each timeseries
-
-        # prepare for while loop
-        ready = np.zeros((inputs.shape[0]), dtype=bool)  # all timeseries set to false
-
-        dod = 1  # (2*frequencies_considered_count-1)  # Um, no it isn't :/
-        noutmax = sample_count - nr - dod
-        for _ in range(sample_count):
-            if ready.all():
-                break
-            # print '--------*-*-*-*',it.value, '*-*-*-*--------'
-            # multiply outliers with timeseries
-            za = np.einsum('ijk,ik->ij', mat, p * inputs)
-
-            # multiply mat with the multiplication of multiply diagonal of p with transpose of mat
-            diag = self.__makediag3d(p)
-            A = np.einsum('ajk,aki->aji', mat, np.einsum('aij,jka->ajk', diag, mat.T))
-            # add delta to suppress high amplitudes but not for [0,0]
-            A = A + np.tile(np.diag(np.ones(nr))[None].T, (1, inputs.shape[0])).T * delta
-            A[:, 0, 0] = A[:, 0, 0] - delta
-
-            # solve linear matrix equation and define reconstructed timeseries
-            zr = np.linalg.solve(A, za)
-            outputs = np.einsum('ijk,kj->ki', mat.T, zr)
-
-            # calculate error and sort err by index
-            err = p * (sHiLo * (outputs - inputs))
-            rankVec = np.argsort(err, axis=1, )
-
-            # select maximum error and compute new ready status
-            maxerr = np.diag(err.take(rankVec[:, sample_count - 1], axis=-1))
-            ready = (maxerr <= fit_error_tolerance) | (nout == noutmax)
-
-            # if ready is still false
-            if not ready.all():
-                j = rankVec.take(sample_count - 1, axis=-1)
-
-                p.T[j.T, np.indices(j.shape)] = p.T[j.T, np.indices(j.shape)] * ready.astype(
-                    int)  # *check
-                nout += 1
-
-        return outputs
+# class HANTS:
+#
+#     def __init__(self):
+#         '''
+#         HANTS algorithm for time series smoothing
+#         '''
+#         pass
+#
+#     def hants_interpolate(self, values_list, dates_list, valid_range): # todo: need to change to 1D values
+#         '''
+#         :param values_list: 2D array of values
+#         :param dates_list:  2D array of dates, datetime objects
+#         :param valid_range: min and max valid values, (min, max)
+#         :return: Dictionary of smoothed values, key: year, value: smoothed value
+#         '''
+#         year_list = []
+#         for date in dates_list:
+#             year = date[0].year
+#             if year not in year_list:
+#                 year_list.append(year)
+#         values_list = np.array(values_list)
+#         std_list = []
+#         for vals in values_list:
+#             std = np.std(vals)
+#             std_list.append(std)
+#         std = np.mean(std_list)
+#         std = 2. * std # larger than twice the standard deviation of the input data is rejected
+#         interpolated_values_list = []
+#         for i,values in enumerate(values_list):
+#             dates = dates_list[i]
+#             xnew, ynew = self.__interp_values_to_DOY(values, dates)
+#             interpolated_values_list.append(ynew)
+#
+#         interpolated_values_list = np.array(interpolated_values_list)
+#         results = HANTS().__hants(sample_count=365, inputs=interpolated_values_list, low=valid_range[0], high=valid_range[1],
+#                                 fit_error_tolerance=std)
+#         # plt.imshow(interpolated_values_list, aspect='auto',vmin=0,vmax=3)
+#         # plt.colorbar()
+#         #
+#         # plt.figure()
+#         # plt.imshow(results, aspect='auto',vmin=0,vmax=3)
+#         # plt.colorbar()
+#         # plt.show()
+#         results_dict = dict(zip(year_list, results))
+#         return results_dict
+#
+#     def __date_list_to_DOY(self,date_list):
+#         '''
+#         :param date_list: list of datetime objects
+#         :return:
+#         '''
+#         start_year = date_list[0].year
+#         start_date = datetime.datetime(start_year, 1, 1)
+#         date_delta = date_list - start_date + datetime.timedelta(days=1)
+#         DOY = [date.days for date in date_delta]
+#         return DOY
+#
+#     def __interp_values_to_DOY(self, values, date_list):
+#         DOY = self.__date_list_to_DOY(date_list)
+#         inx = DOY
+#         iny = values
+#         x_new = list(range(1, 366))
+#         func = interpolate.interp1d(inx, iny, fill_value="extrapolate")
+#         y_new = func(x_new)
+#         return x_new, y_new
+#
+#     def __makediag3d(self,M):
+#         b = np.zeros((M.shape[0], M.shape[1] * M.shape[1]))
+#         b[:, ::M.shape[1] + 1] = M
+#         return b.reshape((M.shape[0], M.shape[1], M.shape[1]))
+#
+#     def __get_starter_matrix(self,base_period_len, sample_count, frequencies_considered_count):
+#         nr = min(2 * frequencies_considered_count + 1,
+#                  sample_count)  # number of 2*+1 frequencies, or number of input images
+#         mat = np.zeros(shape=(nr, sample_count))
+#         mat[0, :] = 1
+#         ang = 2 * np.pi * np.arange(base_period_len) / base_period_len
+#         cs = np.cos(ang)
+#         sn = np.sin(ang)
+#         # create some standard sinus and cosinus functions and put in matrix
+#         i = np.arange(1, frequencies_considered_count + 1)
+#         ts = np.arange(sample_count)
+#         for column in range(sample_count):
+#             index = np.mod(i * ts[column], base_period_len)
+#             # index looks like 000, 123, 246, etc, until it wraps around (for len(i)==3)
+#             mat[2 * i - 1, column] = cs.take(index)
+#             mat[2 * i, column] = sn.take(index)
+#         return mat
+#
+#     def __hants(self,sample_count, inputs,
+#               frequencies_considered_count=3,
+#               outliers_to_reject='Hi',
+#               low=0., high=255,
+#               fit_error_tolerance=5.,
+#               delta=0.1):
+#         """
+#         Function to apply the Harmonic analysis of time series applied to arrays
+#         sample_count    = nr. of images (total number of actual samples of the time series)
+#         base_period_len    = length of the base period, measured in virtual samples
+#                 (days, dekads, months, etc.)
+#         frequencies_considered_count    = number of frequencies to be considered above the zero frequency
+#         inputs     = array of input sample values (e.g. NDVI values)
+#         ts    = array of size sample_count of time sample indicators
+#                 (indicates virtual sample number relative to the base period);
+#                 numbers in array ts maybe greater than base_period_len
+#                 If no aux file is used (no time samples), we assume ts(i)= i,
+#                 where i=1, ..., sample_count
+#         outliers_to_reject  = 2-character string indicating rejection of high or low outliers
+#                 select from 'Hi', 'Lo' or 'None'
+#         low   = valid range minimum
+#         high  = valid range maximum (values outside the valid range are rejeced
+#                 right away)
+#         fit_error_tolerance   = fit error tolerance (points deviating more than fit_error_tolerance from curve
+#                 fit are rejected)
+#         dod   = degree of overdeterminedness (iteration stops if number of
+#                 points reaches the minimum required for curve fitting, plus
+#                 dod). This is a safety measure
+#         delta = small positive number (e.g. 0.1) to suppress high amplitudes
+#         """
+#         # define some parameters
+#         base_period_len = sample_count  #
+#
+#         # check which setting to set for outlier filtering
+#         if outliers_to_reject == 'Hi':
+#             sHiLo = -1
+#         elif outliers_to_reject == 'Lo':
+#             sHiLo = 1
+#         else:
+#             sHiLo = 0
+#
+#         nr = min(2 * frequencies_considered_count + 1,
+#                  sample_count)  # number of 2*+1 frequencies, or number of input images
+#
+#         # create empty arrays to fill
+#         outputs = np.zeros(shape=(inputs.shape[0], sample_count))
+#
+#         mat = self.__get_starter_matrix(base_period_len, sample_count, frequencies_considered_count)
+#
+#         # repeat the mat array over the number of arrays in inputs
+#         # and create arrays with ones with shape inputs where high and low values are set to 0
+#         mat = np.tile(mat[None].T, (1, inputs.shape[0])).T
+#         p = np.ones_like(inputs)
+#         p[(low >= inputs) | (inputs > high)] = 0
+#         nout = np.sum(p == 0, axis=-1)  # count the outliers for each timeseries
+#
+#         # prepare for while loop
+#         ready = np.zeros((inputs.shape[0]), dtype=bool)  # all timeseries set to false
+#
+#         dod = 1  # (2*frequencies_considered_count-1)  # Um, no it isn't :/
+#         noutmax = sample_count - nr - dod
+#         for _ in range(sample_count):
+#             if ready.all():
+#                 break
+#             # print '--------*-*-*-*',it.value, '*-*-*-*--------'
+#             # multiply outliers with timeseries
+#             za = np.einsum('ijk,ik->ij', mat, p * inputs)
+#
+#             # multiply mat with the multiplication of multiply diagonal of p with transpose of mat
+#             diag = self.__makediag3d(p)
+#             A = np.einsum('ajk,aki->aji', mat, np.einsum('aij,jka->ajk', diag, mat.T))
+#             # add delta to suppress high amplitudes but not for [0,0]
+#             A = A + np.tile(np.diag(np.ones(nr))[None].T, (1, inputs.shape[0])).T * delta
+#             A[:, 0, 0] = A[:, 0, 0] - delta
+#
+#             # solve linear matrix equation and define reconstructed timeseries
+#             zr = np.linalg.solve(A, za)
+#             outputs = np.einsum('ijk,kj->ki', mat.T, zr)
+#
+#             # calculate error and sort err by index
+#             err = p * (sHiLo * (outputs - inputs))
+#             rankVec = np.argsort(err, axis=1, )
+#
+#             # select maximum error and compute new ready status
+#             maxerr = np.diag(err.take(rankVec[:, sample_count - 1], axis=-1))
+#             ready = (maxerr <= fit_error_tolerance) | (nout == noutmax)
+#
+#             # if ready is still false
+#             if not ready.all():
+#                 j = rankVec.take(sample_count - 1, axis=-1)
+#
+#                 p.T[j.T, np.indices(j.shape)] = p.T[j.T, np.indices(j.shape)] * ready.astype(
+#                     int)  # *check
+#                 nout += 1
+#
+#         return outputs
 
 class GLASS_LAI:
 
@@ -1157,25 +1160,207 @@ class CCI_SM:
 class LAI_4g:
 
     def __init__(self):
-        self.datadir = join(data_root,'LAI4g')
+        self.datadir = '/Volumes/NVME2T/greening_project_redo/data/LAI4g/new_221109'
         pass
 
     def run(self):
-        self.resample()
+        # self.mat_to_tif()
+        # self.resample()
+        # self.per_pix()
+        # self.hants()
+        # self.check_hants()
+        # self.climatology_mean()
+        # self.per_pix_climatology_mean()
+        # self.hants_climatology_mean()
+        self.transform_hants()
         pass
 
+    def mat_to_tif(self):
+        import h5py
+        fdir = join(self.datadir,'mat')
+        outdir = join(self.datadir,'tif')
+        T.mk_dir(outdir)
+        for f in tqdm(T.listdir(fdir)):
+            fpath=join(fdir,f)
+            outf = join(outdir,f.replace('.mat','.tif'))
+            if isfile(outf):
+                continue
+            mat = h5py.File(fpath)
+            # print(f,mat.keys())
+            try:
+                arr = mat['data_gimms_lai'][::]
+            except:
+                arr = mat['data_modis_lai'][::]
+            arr = np.array(arr)
+            arr = arr.T
+            ToRaster().array2raster(outf, -180, 90, 360/4320., -(180./2160), arr)
+
+
     def resample(self):
-        fdir = join(self.datadir,'gimms_lai4g_tiff')
-        outdir = join(self.datadir,'tif_resample')
+        fdir = join(self.datadir,'tif')
+        outdir = join(self.datadir,'tif_05')
         T.mk_dir(outdir)
         for f in tqdm(T.listdir(fdir)):
             fpath = join(fdir,f)
             outf = join(outdir,f)
-            array, originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(fpath)
-            array_resample = T.resample_nan(array,0.5,pixelWidth)
-            array_resample[array_resample == 0] = np.nan
-            array_resample = array_resample[::-1]
-            DIC_and_TIF().arr_to_tif(array_resample,outf)
+            if isfile(outf):
+                continue
+            ToRaster().resample_reproj(fpath,outf,0.5)
+
+    def per_pix(self):
+        fdir = join(self.datadir,'tif_05')
+        outdir = join(self.datadir,'per_pix')
+        T.mk_dir(outdir)
+        Pre_Process().data_transform(fdir,outdir)
+        pass
+
+    def get_date_list(self):
+        fdir = join(self.datadir,'tif_05')
+        date_list = []
+        for f in T.listdir(fdir):
+            date = f.split('_')[1]
+            date = date.split('.')[0]
+            year = int(date[:4])
+            month = int(date[4:6])
+            day = int(date[6:])
+            if day == 2:
+                day = 15
+            date_obj = datetime.datetime(year,month,day)
+            date_list.append(date_obj)
+        return date_list
+
+    def hants(self):
+        fdir = join(self.datadir,'per_pix')
+        outdir = join(self.datadir,'hants')
+        T.mk_dir(outdir)
+        for f in T.listdir(fdir):
+            outf = join(outdir,f'{f}')
+            spatial_dict = T.load_npy(join(fdir,f))
+            date_list = self.get_date_list()
+            all_result = {}
+            for pix in tqdm(spatial_dict):
+                r,c = pix
+                if r > 120:
+                    continue
+                vals = spatial_dict[pix]
+                vals[vals<-9999] = np.nan
+                if T.is_all_nan(vals):
+                    continue
+                try:
+                    hants_results_dict = HANTS().hants_interpolate(vals,date_list,valid_range=(0,10))
+                except:
+                    continue
+                all_result[pix] = hants_results_dict
+            if len(all_result) == 0:
+                continue
+            T.save_npy(all_result,outf)
+            # df = T.dic_to_df(all_result,'pix')
+            # T.save_df(df,outf)
+            # T.df_to_excel(df,outf.replace('.df',''))
+
+    def per_pix_climatology_mean(self):
+        fdir = join(self.datadir,'climatology_mean')
+        outdir = join(self.datadir,'per_pix_climatology_mean')
+        Pre_Process().data_transform(fdir,outdir)
+
+    def hants_climatology_mean(self):
+        fdir = join(self.datadir,'per_pix_climatology_mean')
+        outdir = join(self.datadir,'hants_climatology_mean')
+        T.mk_dir(outdir)
+        date_list = self.get_date_list()
+        date_list = date_list[:24]
+        spatial_dict = T.load_npy_dir(fdir)
+        spatial_dict_hants = {}
+        for pix in tqdm(spatial_dict):
+            r,c = pix
+            if r > 120:
+                continue
+            vals = spatial_dict[pix]
+            vals[vals<-9999] = np.nan
+            if T.is_all_nan(vals):
+                continue
+            try:
+                hants_results_dict = HANTS().hants_interpolate(vals, date_list, valid_range=(0, 10),nan_value=0)
+            except:
+                continue
+            # plt.plot(vals)
+            vals = hants_results_dict[1982]
+            spatial_dict_hants[pix] = vals
+        T.save_npy(spatial_dict_hants,join(outdir,'hants_climatology_mean'))
+
+
+
+    def check_hants(self):
+
+        fdir = join(self.datadir,'hants')
+
+        spatial_dict_1 = {}
+        for f in T.listdir(fdir):
+            print(f)
+            spatial_dict = T.load_npy(join(fdir,f))
+            for pix in spatial_dict:
+                spatial_dict_1[pix] = 1
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_1)
+        plt.imshow(arr)
+        plt.colorbar()
+        plt.show()
+
+    def climatology_mean(self):
+        fdir = join(self.datadir,'tif_05')
+        outdir = join(self.datadir,'climatology_mean')
+        T.mk_dir(outdir)
+        date_list = self.get_date_list()
+        fpath_list = []
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            fpath_list.append(fpath)
+        fpath_dict = dict(zip(date_list,fpath_list))
+        y_list = []
+        m_list = []
+        d_list = []
+        for date in date_list:
+            y,m,d = date.year,date.month,date.day
+            y_list.append(y)
+            m_list.append(m)
+            d_list.append(d)
+        y_list = list(set(y_list))
+        m_list = list(set(m_list))
+        d_list = list(set(d_list))
+        y_list.sort()
+        m_list.sort()
+        d_list.sort()
+        for m in m_list:
+            for d in d_list:
+                fpath_list = []
+                outf = join(outdir,f'{1982}{m:02d}{d:02d}.tif')
+                for y in y_list:
+                    date = datetime.datetime(y,m,d)
+                    fpath = fpath_dict[date]
+                    fpath_list.append(fpath)
+                Pre_Process().compose_tif_list(fpath_list,outf)
+
+
+    def transform_hants(self):
+        fdir = join(self.datadir,'hants')
+        outdir = join(self.datadir,'hants_transform')
+        T.mk_dir(outdir)
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            spatial_dict = T.load_npy(fpath)
+            for pix in tqdm(spatial_dict,desc=f):
+                dict_i = spatial_dict[pix]
+                year_list = []
+                for y in dict_i:
+                    year_list.append(y)
+                year_list.sort()
+                vals = []
+                for y in year_list:
+                    vals.append(dict_i[y])
+                vals = np.array(vals)
+                spatial_dict[pix] = vals
+            T.save_npy(spatial_dict,join(outdir,f))
+
+
 
 
 class LAI_3g:
@@ -2091,6 +2276,116 @@ class ERA:
 
 
 
+class SPI:
+    def __init__(self):
+        self.datadir = '/Volumes/NVME2T/hotcold_drought/data/CRU/pre'
+        pass
+
+    def run(self):
+        self.per_pix()
+        pass
+
+    def per_pix(self):
+        fdir = join(self.datadir,'spi/1901-2020')
+        outdir = join(self.datadir,'spi/1982-2018')
+        T.mk_dir(outdir,force=True)
+        f = join(fdir,'spi03.npy')
+        # generate monthly date list
+        date_list = []
+        for y in range(1901,2021):
+            for m in range(1,13):
+                date_str = '%d-%02d'%(y,m)
+                date_list.append(date_str)
+        selected_date_list = []
+        for y in range(1982,2019):
+            for m in range(1,13):
+                date_str = '%d-%02d'%(y,m)
+                selected_date_list.append(date_str)
+        selected_date_index = [date_list.index(date_str) for date_str in selected_date_list]
+
+        spi_dict = T.load_npy(f)
+        spatial_dict = {}
+        for pix in spi_dict:
+            r,c = pix
+            if r > 120:
+                continue
+            vals = spi_dict[pix]
+            vals = T.pick_vals_from_1darray(vals,selected_date_index)
+            spatial_dict[pix] = vals
+        T.save_npy(spatial_dict,join(outdir,'1982-2018_spi03'))
+
+class SWE:
+
+    def __init__(self):
+        self.datadir = '/Volumes/NVME2T/greening_project_redo/data/GlobSnow_v3'
+        pass
+
+    def run(self):
+        # self.nc_to_tif()
+        # self.projection_trans()
+        self.per_pix()
+        pass
+
+
+    def kernel_nc_to_tif(self,fname,var_name,outf_name):
+        try:
+            ncin = Dataset(fname, 'r')
+        except:
+            raise UserWarning('File not supported: ' + fname)
+        lat = ncin.variables['x'][:]
+        lon = ncin.variables['y'][:]
+        shape = np.shape(lat)
+        data = ncin.variables[var_name]
+        arr = data[::]
+        arr = np.array(arr)
+        longitude_start = lon[0]
+        latitude_start = lat[0]
+        pixelWidth = lon[1] - lon[0]
+        pixelHeight = lat[1] - lat[0]
+        ToRaster().array2raster(outf_name, longitude_start, latitude_start, pixelWidth, pixelHeight,arr)
+
+    def nc_to_tif(self):
+        fdir = join(self.datadir,'nc')
+        outdir = join(self.datadir,'tif')
+        T.mk_dir(outdir,force=True)
+        for f in tqdm(T.listdir(fdir)):
+            date_str = f.split('_')[0]
+            fpath = join(fdir,f)
+            outpath = join(outdir,date_str+'.tif')
+            self.kernel_nc_to_tif(fpath,'swe',outpath)
+
+    def projection_trans(self):
+        nc_f = join(self.datadir,'nc','197902_northern_hemisphere_monthly_biascorrected_swe_0.25grid.nc')
+        fdir = join(self.datadir, 'tif')
+        outdir = join(self.datadir, 'tif_wgs84')
+        ncin = Dataset(nc_f, 'r')
+        crs = ncin.variables['crs']
+        inRasterSRS = DIC_and_TIF().gen_srs_from_wkt(crs.spatial_ref)
+
+        T.mk_dir(outdir,force=True)
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir,f)
+            outpath = join(outdir,f)
+            DIC_and_TIF().resample_reproj(fpath,outpath,0.5,srcSRS=inRasterSRS)
+
+    def per_pix(self):
+        fdir = join(self.datadir,'tif_wgs84')
+        outdir = join(self.datadir,'per_pix')
+        T.mk_dir(outdir,force=True)
+        flist = []
+        for f in tqdm(T.listdir(fdir)):
+            fpath = join(fdir,f)
+            date_str = f.split('.')[0]
+            year = date_str[:4]
+            month = date_str[4:6]
+            year = int(year)
+            if year < 1982:
+                continue
+            if year > 2018:
+                continue
+            flist.append(fpath)
+        Pre_Process().data_transform_with_date_list(fdir,outdir,flist)
+
 
 
 def main():
@@ -2109,8 +2404,10 @@ def main():
     # VODCA_GPP().run()
     # VOD_AMSRU().run()
     # FLUX_Matt().run()
-    Terraclimate().run()
+    # Terraclimate().run()
     # ERA().run()
+    # SPI().run()
+    SWE().run()
     # check_cci_sm()
     # f = '/Volumes/NVME2T/greening_project_redo/data/GEE_AVHRR_LAI/per_pix_clean/per_pix_dic_005.npy'
     # dic = T.load_npy(f)
