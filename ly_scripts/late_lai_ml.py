@@ -1,10 +1,7 @@
 # coding=utf-8
 import time
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-
+import xycmap
+import PIL.Image as Image
 from __init__ import *
 result_root_this_script = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/'
 global_start_year = 1982
@@ -790,7 +787,7 @@ class Correlation_per_pix:
     def run(self):
         dff = Dataframe().dff
         df = T.load_df(dff)
-        # self.run_corr(df)
+        self.run_corr(df)
         self.max_correlation()
         # self.plot_RF_result()
         pass
@@ -1292,8 +1289,10 @@ class Moving_window_single_correlation:
         pass
 
     def run(self):
-        self.run_corr()
-        # self.plot_P_corr()
+        # self.run_corr()
+        # self.plot_corr()
+        # self.moving_window_trend()
+        self.over_all_corr()
         pass
 
     def run_corr(self):
@@ -1375,15 +1374,16 @@ class Moving_window_single_correlation:
         return partial_correlation,partial_correlation_p_value
 
 
-    def plot_P_corr(self):
-        outdir = join(self.this_class_png,'p_corr')
+    def plot_corr(self):
+        outdir = join(self.this_class_png,'corr')
         # outdir = join(self.this_class_png,'p_corr_detrend')
         T.mkdir(outdir,force=True)
         T.open_path_and_file(outdir)
         period_list = ['early', 'peak', 'late']
-        fdir = join(self.this_class_arr,'p_corr')
+        fdir = join(self.this_class_arr,'corr')
         # fdir = join(self.this_class_arr,'p_corr_detrend')
-        ltd_list = ('Non-sig', 'energy-limited', 'water-limited')
+        # ltd_list = ('Non-sig', 'energy-limited', 'water-limited')
+        ltd_list = ('energy-limited', 'water-limited')
         for ltd in ltd_list:
             for period in period_list:
                 x_list = self.x_variables(period)
@@ -1413,6 +1413,153 @@ class Moving_window_single_correlation:
                     plt.savefig(outf)
                     plt.close()
 
+    def moving_window_trend(self):
+        outdir = join(self.this_class_tif, 'moving_window_trend')
+        T.mkdir(outdir, force=True)
+        T.open_path_and_file(outdir)
+        period_list = ['early', 'peak', 'late']
+        fdir = join(self.this_class_arr, 'corr')
+        for period in period_list:
+            x_list = self.x_variables(period)
+            fdir_i = join(fdir, period)
+            window_number = len(T.listdir(fdir_i))
+            outdir_i = join(outdir, period)
+            T.mkdir(outdir_i, force=True)
+            for x in tqdm(x_list,desc=f'{period}'):
+                arrs = []
+                for window in T.listdir(fdir_i):
+                    fpath = join(fdir_i, window, f'{window}_corr.df')
+                    df = T.load_df(fpath)
+                    spatial_dict = T.df_to_spatial_dic(df, x)
+                    arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+                    arrs.append(arr)
+
+                trend_spatial_dict = {}
+                trend_p_spatial_dict = {}
+                for r in range(len(arrs[0])):
+                    for c in range(len(arrs[0][0])):
+                        ts = []
+                        pix = (r,c)
+                        for i in range(len(arrs)):
+                            val = arrs[i][r][c]
+                            ts.append(val)
+                        if T.is_all_nan(ts):
+                            continue
+                        a,b,_,p = T.nan_line_fit(list(range(len(ts))),ts)
+                        trend_spatial_dict[pix] = a
+                        trend_p_spatial_dict[pix] = p
+                outf_trend = join(outdir_i, f'{x}.tif')
+                outf_p = join(outdir_i, f'{x}_p.tif')
+                DIC_and_TIF().pix_dic_to_tif(trend_spatial_dict, outf_trend)
+                DIC_and_TIF().pix_dic_to_tif(trend_p_spatial_dict, outf_p)
+
+    def over_all_corr(self):
+        data_dir = '/Volumes/NVME2T/greening_project_redo/data/original_20221107/'
+        outdir = join(self.this_class_tif, 'over_all_corr')
+        T.mkdir(outdir, force=True)
+        period_list = ['early', 'peak', 'late']
+        y_var = self.y_variable()
+        for period in period_list:
+            outdir_i = join(outdir, period)
+            T.mkdir(outdir_i, force=True)
+            spatial_dict_y_f = join(data_dir,'LAI3g',f'during_{period}_LAI3g.npy')
+            spatial_dict_y = T.load_npy(spatial_dict_y_f)
+            x_var_list = self.x_variables(period)
+            for x in x_var_list:
+                outf = join(outdir_i, f'{period}_{x}.tif')
+                spatial_dict_f = join(data_dir, f'X/{period}',f'during_{x}.npy')
+                spatial_dict = T.load_npy(spatial_dict_f)
+                corr_dict = {}
+                for pix in tqdm(spatial_dict,desc=f'{period} {x}'):
+                    x_vals = spatial_dict[pix]
+                    if not pix in spatial_dict_y:
+                        continue
+                    y_vals = spatial_dict_y[pix]
+                    if len(y_vals) == 0:
+                        continue
+                    if len(x_vals) == 0:
+                        continue
+                    a, b, r, p = T.nan_line_fit(x_vals, y_vals)
+                    corr_dict[pix] = r
+                DIC_and_TIF().pix_dic_to_tif(corr_dict, outf)
+
+
+    def bivariate_plot(self):
+
+        pass
+
+
+class Bivariate_plot:
+
+
+    def __init__(self):
+        pass
+
+    def run(self):
+        n = (16, 16)
+        corner_colors = ("#DD9FC5", '#798AAB', "#F3F3F3", "#8ECCA5")
+        zcmap = xycmap.custom_xycmap(corner_colors=corner_colors, n=n)
+        # plt.imshow(zcmap)
+        # plt.show()
+        tif1 = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/tif/Moving_window_single_correlation/moving_window_trend/early/early_CCI_SM.tif'
+        tif2 = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/tif/Moving_window_single_correlation/over_all_corr/early/early_early_CCI_SM.tif'
+        arr1,originX, originY, pixelWidth, pixelHeight = ToRaster().raster2array(tif1)
+        arr2 = ToRaster().raster2array(tif2)[0]
+        arr1[arr1<-999] = np.nan
+        arr2[arr2<-999] = np.nan
+        max1 = np.nanmax(arr1)
+        min1 = np.nanmin(arr1)
+        max2 = np.nanmax(arr2)
+        min2 = np.nanmin(arr2)
+        # min1 = -0.05
+        # max1 = 0.05
+        # min2 = -0.5
+        # max2 = 0.5
+        bin1 = np.linspace(min1,max1,n[0]+1)
+        bin2 = np.linspace(min2,max2,n[1]+1)
+
+        spatial_dict1 = DIC_and_TIF().spatial_arr_to_dic(arr1)
+        spatial_dict2 = DIC_and_TIF().spatial_arr_to_dic(arr2)
+        dict_all = {'arr1':spatial_dict1,'arr2':spatial_dict2}
+        df = T.spatial_dics_to_df(dict_all)
+        # print(df)
+        # exit()
+
+
+        blend_arr = []
+        for r in range(len(arr1)):
+            temp = []
+            for c in range(len(arr1[0])):
+                val1 = arr1[r][c]
+                val2 = arr2[r][c]
+                if np.isnan(val1) or np.isnan(val2):
+                    temp.append(np.array([1,1,1,1]))
+                    continue
+                for i in range(len(bin1)-1):
+                    if val1 >= bin1[i] and val1 <= bin1[i+1]:
+                        for j in range(len(bin2)-1):
+                            if val2 >= bin2[j] and val2 <= bin2[j+1]:
+                                # print(zcmap[i][j])
+                                color = zcmap[i][j] * 255
+                                # print(color)
+                                temp.append(color)
+            temp = np.array(temp)
+            blend_arr.append(temp)
+        blend_arr = np.array(blend_arr)
+        print(np.shape(blend_arr))
+        # exit()
+        newRasterfn = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/tif/Moving_window_single_correlation/test.tif'
+        img = Image.fromarray(blend_arr.astype('uint8'), 'RGBA')
+        img.save(newRasterfn)
+        # define a projection and extent
+        raster = gdal.Open(newRasterfn)
+        geotransform = raster.GetGeoTransform()
+        raster.SetGeoTransform((originX, pixelWidth, 0, originY, 0, pixelHeight))
+        outRasterSRS = osr.SpatialReference()
+        outRasterSRS.ImportFromEPSG(4326)
+        raster.SetProjection(outRasterSRS.ExportToWkt())
+
+
 def gen_ocean():
     arr = np.ones((360, 720))
     DIC_and_TIF().arr_to_tif(arr, join('/Volumes/NVME2T/greening_project_redo/conf', 'ocean.tif'))
@@ -1427,7 +1574,8 @@ def main():
     # Correlation_per_pix().run()
     # Dataframe_moving_window().run()
     # Moving_window_p_correlation().run()
-    Moving_window_single_correlation().run()
+    # Moving_window_single_correlation().run()
+    Bivariate_plot().run()
     # Test_wen_data().run()
     # Tipping_point().run()
     # gen_ocean()
