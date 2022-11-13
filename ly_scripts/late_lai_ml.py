@@ -1,6 +1,7 @@
 # coding=utf-8
 import time
 
+import torch
 import torch.hub
 import xycmap
 import PIL.Image as Image
@@ -202,6 +203,236 @@ class Dataframe:
             photo_period_list_all.append(photo_period_sum_list)
         df['photo_period'] = photo_period_list_all
         return df
+class Dataframe_moving_window:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Dataframe_moving_window',
+                                                                                       result_root_this_script)
+        self.dff = join(self.this_class_arr, 'data_frame.df')
+        self.datadir = '/Volumes/NVME2T/greening_project_redo/data/original_20221107'
+        self.n = 15
+        pass
+
+    def run(self):
+        # valid_pix = self.valid_pix()
+        # df = self.add_variables()
+        df = self.gen_moving_window_df()
+
+    def gen_window(self):
+        n = self.n
+        year_list = list(range(1982,2019))
+        window_list = []
+        for i in range(len(year_list)-n+1):
+            window_list.append(year_list[i:i+n])
+        return window_list
+
+    def valid_pix(self):
+        outf = join(self.this_class_arr, 'valid_pix.npy')
+        if isfile(outf):
+            valid_pix = np.load(outf, allow_pickle=True)
+            return valid_pix
+        spatial_dict = DIC_and_TIF().spatial_tif_to_dic(land_tif)
+        dict_all = {'1': spatial_dict}
+        df = T.spatial_dics_to_df(dict_all)
+        df = Main_flow_2.Dataframe_func(df).df
+        pix_list = df['pix'].values.tolist()
+        pix_list = np.array(pix_list)
+        np.save(join(self.this_class_arr, 'valid_pix.npy'), pix_list)
+        return pix_list
+
+
+    def __load_df(self):
+        dff = self.dff
+        df = T.load_df(dff)
+        return df,dff
+
+    def __gen_df_init(self):
+        df = pd.DataFrame()
+        if not os.path.isfile(self.dff):
+            T.save_df(df, self.dff)
+            return df
+        else:
+            df, dff = self.__load_df()
+            return df
+
+    def gen_var_fpath_dict(self):
+        period_list = ['early','peak','late']
+        variables_fpath_dict = {}
+        y_fdir = join(self.datadir, 'LAI3g')
+        for period in period_list:
+            x_fdir = join(self.datadir,'X',period)
+            for f in T.listdir(x_fdir):
+                var_name = f.split('.')[0].replace('during_','')
+                fpath = join(x_fdir,f)
+                variables_fpath_dict[var_name] = fpath
+            var_name = f'{period}_LAI3g'
+            fpath = join(y_fdir, f'during_{period}_LAI3g.npy')
+            variables_fpath_dict[var_name] = fpath
+        var_name_early_peak = 'early_peak_LAI3g'
+        fpath_early_peak = join(y_fdir, f'during_early_peak_LAI3g.npy')
+        variables_fpath_dict[var_name_early_peak] = fpath_early_peak
+        return variables_fpath_dict
+
+    def add_variables(self):
+        var_fpath_dict = self.gen_var_fpath_dict()
+        valid_pix = self.valid_pix()
+        dict_all = {}
+        for var_name in var_fpath_dict:
+            fpath = var_fpath_dict[var_name]
+            spatial_dict = T.load_npy(fpath)
+            spatial_dict_new = {}
+            for pix in tqdm(spatial_dict,desc=var_name):
+                if not pix in valid_pix:
+                    continue
+                vals = spatial_dict[pix]
+                if len(vals) == 0:
+                    continue
+                spatial_dict_new[pix] = vals
+            dict_all[var_name] = spatial_dict_new
+        df = T.spatial_dics_to_df(dict_all)
+        df = Main_flow_2.Dataframe_func(df).df
+        T.save_df(df, self.dff)
+        T.df_to_excel(df, self.dff)
+
+    def gen_moving_window_df(self):
+        outdir = join(self.this_class_arr, 'moving_window')
+        T.mkdir(outdir,force=True)
+        df = T.load_df(self.dff)
+        variables_dict = self.gen_var_fpath_dict()
+        variables_list = []
+        for v in variables_dict:
+            variables_list.append(v)
+        window_list = self.gen_window()
+        for w in tqdm(range(len(window_list))):
+            window = window_list[w]
+            window = np.array(window)
+            window = window - 1982
+            window_str = f'{w:02d}'
+            outdir_i = join(outdir,window_str)
+            T.mkdir(outdir_i,force=True)
+            outf = join(outdir_i,f'{window_str}.df')
+            if isfile(outf):
+                continue
+            dict_all = {}
+            for i,row in df.iterrows():
+                pix = row['pix']
+                dict_i = {}
+                for x in variables_list:
+                    vals = row[x]
+                    if type(vals) == float:
+                        continue
+                    if len(vals) != 37:
+                        continue
+                    if T.is_all_nan(vals):
+                        continue
+                    vals = T.pick_vals_from_1darray(vals,window)
+                    dict_i[x] = vals
+                dict_all[pix] = dict_i
+            df_out = T.dic_to_df(dict_all,key_col_str='pix')
+            df_out = Main_flow_2.Dataframe_func(df_out).df
+            T.save_df(df_out,outf)
+            T.df_to_excel(df_out,outf)
+
+
+class Dataframe_per_value:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Dataframe_per_value',
+                                                                                       result_root_this_script)
+        self.datadir = All_variables_single_corr().datadir
+        self.start_year = 2000
+
+        pass
+
+    def run(self):
+        # x_list_current_year_fpath, x_list_previous_year_fpath = All_variables_single_corr().x_variables()
+        all_x_variables = All_variables_single_corr().all_x_variables()
+        print(all_x_variables.keys())
+        # exit()
+        y_spatial_dict = All_variables_single_corr().y_variable()
+        df = T.spatial_dics_to_df({'y': y_spatial_dict})
+        df = Main_flow_2.Dataframe_func(df).df
+        limited_area_list = T.get_df_unique_val_list(df, 'limited_area')
+        limited_area_pix_dict = {}
+        for ltd in limited_area_list:
+            df_ltd = df[df['limited_area'] == ltd]
+            pix_list = df_ltd['pix'].values.tolist()
+            pix_list = set(pix_list)
+            limited_area_pix_dict[ltd] = pix_list
+        for ltd in limited_area_pix_dict:
+            selected_pix_list = limited_area_pix_dict[ltd]
+            data_dict = {}
+            for x_var in all_x_variables:
+                if 'CO2' in x_var:
+                    continue
+                if 'SWE' in x_var:
+                    spatial_dict = T.load_npy_dir(all_x_variables[x_var])
+                    spatial_dict_new = {}
+                    for pix in spatial_dict:
+                        vals = spatial_dict[pix]
+                        vals[vals < -999] = np.nan
+                        spatial_dict_new[pix] = vals
+                    spatial_dict = spatial_dict_new
+                else:
+                    spatial_dict = T.load_npy(all_x_variables[x_var])
+                year_list = []
+                all_vals_list = []
+                for pix in tqdm(selected_pix_list, desc=x_var):
+                    if not pix in spatial_dict:
+                        year_list.extend(list(range(self.start_year, 2019)))
+                        all_vals_list.extend([np.nan] * 19)
+                        continue
+                    x_val = spatial_dict[pix]
+                    if x_var in ['current_during_early_peak_late_SPEI3',
+                                 'current_during_late_Temp',
+                                 'current_during_late_VPD',
+                                 'current_during_peak_SPI3',
+                                 'current_during_late_PAR',
+                                 'current_during_late_SPI3',
+                                 'current_SWE',
+                                 ]:
+                        x_val = x_val[1:]
+                    elif x_var in [
+                                   'pre_early_start','pre_during_early_peak_late_MODIS_LAI'
+                                ]:
+                        x_val = list(x_val)
+                        x_val = x_val[1:]
+                        x_val.append(np.nan)
+                        x_val = np.array(x_val)
+                    elif x_var in [
+                                   'pre_during_early_peak_late_SPEI3',
+                                ]:
+                        x_val = x_val[1:]
+                    elif x_var in [
+                                   'current_early_start','current_during_early_peak_MODIS_LAI'
+                                ]:
+                        x_val = x_val
+                    else:
+                        continue
+                    if not len(x_val) == 19:
+                        year_list.extend(list(range(self.start_year, 2019)))
+                        all_vals_list.extend([np.nan] * 19)
+                        continue
+                    for i,val in enumerate(x_val):
+                        year = self.start_year + i
+                        year_list.append(year)
+                        all_vals_list.append(val)
+                data_dict[x_var] = all_vals_list
+                data_dict['year'] = year_list
+            all_vals_list = []
+            for pix in tqdm(selected_pix_list):
+                # if not pix in spatial_dict:
+                #     year_list.extend(list(range(self.start_year, 2019)))
+                #     all_vals_list.extend([np.nan] * 19)
+                #     continue
+                x_val = y_spatial_dict[pix]
+                for i, val in enumerate(x_val):
+                    all_vals_list.append(val)
+            data_dict['late_MODIS_LAI'] = all_vals_list
+            df_out = pd.DataFrame(data_dict)
+            # df_out = df_out.dropna()
+            T.print_head_n(df_out, 10)
+            exit()
 
 class RF:
 
@@ -1015,135 +1246,6 @@ class Test_wen_data:
         pass
 
 
-class Dataframe_moving_window:
-
-    def __init__(self):
-        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Dataframe_moving_window',
-                                                                                       result_root_this_script)
-        self.dff = join(self.this_class_arr, 'data_frame.df')
-        self.datadir = '/Volumes/NVME2T/greening_project_redo/data/original_20221107'
-        self.n = 15
-        pass
-
-    def run(self):
-        # valid_pix = self.valid_pix()
-        # df = self.add_variables()
-        df = self.gen_moving_window_df()
-
-    def gen_window(self):
-        n = self.n
-        year_list = list(range(1982,2019))
-        window_list = []
-        for i in range(len(year_list)-n+1):
-            window_list.append(year_list[i:i+n])
-        return window_list
-
-    def valid_pix(self):
-        outf = join(self.this_class_arr, 'valid_pix.npy')
-        if isfile(outf):
-            valid_pix = np.load(outf, allow_pickle=True)
-            return valid_pix
-        spatial_dict = DIC_and_TIF().spatial_tif_to_dic(land_tif)
-        dict_all = {'1': spatial_dict}
-        df = T.spatial_dics_to_df(dict_all)
-        df = Main_flow_2.Dataframe_func(df).df
-        pix_list = df['pix'].values.tolist()
-        pix_list = np.array(pix_list)
-        np.save(join(self.this_class_arr, 'valid_pix.npy'), pix_list)
-        return pix_list
-
-
-    def __load_df(self):
-        dff = self.dff
-        df = T.load_df(dff)
-        return df,dff
-
-    def __gen_df_init(self):
-        df = pd.DataFrame()
-        if not os.path.isfile(self.dff):
-            T.save_df(df, self.dff)
-            return df
-        else:
-            df, dff = self.__load_df()
-            return df
-
-    def gen_var_fpath_dict(self):
-        period_list = ['early','peak','late']
-        variables_fpath_dict = {}
-        y_fdir = join(self.datadir, 'LAI3g')
-        for period in period_list:
-            x_fdir = join(self.datadir,'X',period)
-            for f in T.listdir(x_fdir):
-                var_name = f.split('.')[0].replace('during_','')
-                fpath = join(x_fdir,f)
-                variables_fpath_dict[var_name] = fpath
-            var_name = f'{period}_LAI3g'
-            fpath = join(y_fdir, f'during_{period}_LAI3g.npy')
-            variables_fpath_dict[var_name] = fpath
-        var_name_early_peak = 'early_peak_LAI3g'
-        fpath_early_peak = join(y_fdir, f'during_early_peak_LAI3g.npy')
-        variables_fpath_dict[var_name_early_peak] = fpath_early_peak
-        return variables_fpath_dict
-
-    def add_variables(self):
-        var_fpath_dict = self.gen_var_fpath_dict()
-        valid_pix = self.valid_pix()
-        dict_all = {}
-        for var_name in var_fpath_dict:
-            fpath = var_fpath_dict[var_name]
-            spatial_dict = T.load_npy(fpath)
-            spatial_dict_new = {}
-            for pix in tqdm(spatial_dict,desc=var_name):
-                if not pix in valid_pix:
-                    continue
-                vals = spatial_dict[pix]
-                if len(vals) == 0:
-                    continue
-                spatial_dict_new[pix] = vals
-            dict_all[var_name] = spatial_dict_new
-        df = T.spatial_dics_to_df(dict_all)
-        df = Main_flow_2.Dataframe_func(df).df
-        T.save_df(df, self.dff)
-        T.df_to_excel(df, self.dff)
-
-    def gen_moving_window_df(self):
-        outdir = join(self.this_class_arr, 'moving_window')
-        T.mkdir(outdir,force=True)
-        df = T.load_df(self.dff)
-        variables_dict = self.gen_var_fpath_dict()
-        variables_list = []
-        for v in variables_dict:
-            variables_list.append(v)
-        window_list = self.gen_window()
-        for w in tqdm(range(len(window_list))):
-            window = window_list[w]
-            window = np.array(window)
-            window = window - 1982
-            window_str = f'{w:02d}'
-            outdir_i = join(outdir,window_str)
-            T.mkdir(outdir_i,force=True)
-            outf = join(outdir_i,f'{window_str}.df')
-            if isfile(outf):
-                continue
-            dict_all = {}
-            for i,row in df.iterrows():
-                pix = row['pix']
-                dict_i = {}
-                for x in variables_list:
-                    vals = row[x]
-                    if type(vals) == float:
-                        continue
-                    if len(vals) != 37:
-                        continue
-                    if T.is_all_nan(vals):
-                        continue
-                    vals = T.pick_vals_from_1darray(vals,window)
-                    dict_i[x] = vals
-                dict_all[pix] = dict_i
-            df_out = T.dic_to_df(dict_all,key_col_str='pix')
-            df_out = Main_flow_2.Dataframe_func(df_out).df
-            T.save_df(df_out,outf)
-            T.df_to_excel(df_out,outf)
 
 
 class Moving_window_p_correlation:
@@ -1575,11 +1677,11 @@ class All_variables_single_corr:
 
     def run(self):
         # self.phenology_df_to_spatial_dict()
-        # self.current_year_corr()
+        self.current_year_corr()
         # self.pre_year_corr()
         # self.current_year_corr_tif()
         # self.pre_year_corr_tif()
-        self.corr_statistic()
+        # self.corr_statistic()
         # self.check_old_corr()
         pass
 
@@ -1641,6 +1743,15 @@ class All_variables_single_corr:
         return x_list_current_year_fpath, x_list_previous_year_fpath
 
 
+    def all_x_variables(self):
+        x_list_current_year_fpath, x_list_previous_year_fpath = self.x_variables()
+        all_x_variables_fpath = {}
+        for x in x_list_current_year_fpath:
+            all_x_variables_fpath[f'current_{x}'] = x_list_current_year_fpath[x]
+        for x in x_list_previous_year_fpath:
+            all_x_variables_fpath[f'pre_{x}'] = x_list_previous_year_fpath[x]
+        return all_x_variables_fpath
+
     def current_year_corr(self):
         outdir = join(self.this_class_arr,'current_year_corr')
         T.mkdir(outdir)
@@ -1657,10 +1768,8 @@ class All_variables_single_corr:
                     vals[vals < -999] = np.nan
                     spatial_dict_new[pix] = vals
                 spatial_dict = spatial_dict_new
-
             else:
                 spatial_dict = T.load_npy(x_list_current_year_fpath[x_var])
-                arr = DIC_and_TIF().pix_dic_to_spatial_arr_mean(spatial_dict)
             corr_dict = {}
             p_dict = {}
             for pix in tqdm(spatial_dict,desc=x_var):
@@ -2018,6 +2127,7 @@ def gen_ocean():
 
 def main():
     # Dataframe().run()
+    Dataframe_per_value().run()
     # RF().run()
     # Partial_corr().run()
     # Partial_corr_per_pix().run()
@@ -2029,7 +2139,7 @@ def main():
     # Bivariate_plot().run()
     # Test_wen_data().run()
     # Tipping_point().run()
-    All_variables_single_corr().run()
+    # All_variables_single_corr().run()
     # All_variables_trend().run()
     # gen_ocean()
     pass
