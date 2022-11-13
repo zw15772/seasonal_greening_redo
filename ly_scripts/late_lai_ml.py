@@ -1,5 +1,7 @@
 # coding=utf-8
 import time
+
+import torch.hub
 import xycmap
 import PIL.Image as Image
 from __init__ import *
@@ -1558,7 +1560,456 @@ class Bivariate_plot:
         outRasterSRS = osr.SpatialReference()
         outRasterSRS.ImportFromEPSG(4326)
         raster.SetProjection(outRasterSRS.ExportToWkt())
+        plt.imshow(zcmap)
+        plt.show()
 
+
+class All_variables_single_corr:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir(
+            'All_variables_single_corr',
+            result_root_this_script)
+        self.datadir = join(self.this_class_arr,'data')
+        pass
+
+    def run(self):
+        # self.phenology_df_to_spatial_dict()
+        # self.current_year_corr()
+        # self.pre_year_corr()
+        # self.current_year_corr_tif()
+        # self.pre_year_corr_tif()
+        self.corr_statistic()
+        # self.check_old_corr()
+        pass
+
+    def phenology_df_to_spatial_dict(self):
+        dff = join(self.datadir,'Phenology_predictors/MODIS_LAI/phenology_dataframe.df')
+        outf = join(self.datadir,'X/early_start.npy')
+        df = T.load_df(dff)
+        spatial_dict = T.df_to_spatial_dic(df,'early_start')
+        spatial_dict_new = {}
+        for pix in spatial_dict:
+            dict_i = spatial_dict[pix]
+            year_list = []
+            for year in dict_i:
+                if year > 2018:
+                    continue
+                year_list.append(year)
+            year_list.sort()
+            early_start_list = []
+            for year in year_list:
+                val = dict_i[year]
+                early_start_list.append(val)
+            early_start_list = np.array(early_start_list)
+            spatial_dict_new[pix] = early_start_list
+        T.save_npy(spatial_dict_new,outf)
+
+    def y_variable(self):
+        y_var = 'during_late_MODIS_LAI'
+        y_f = join(self.datadir, f'Y/{y_var}.npy')
+        y_dict = T.load_npy(y_f)
+        return y_dict
+
+    def x_variables(self):
+
+        x_list_current_year = [
+            'early_start',
+            'during_early_peak_late_SPEI3',
+            'during_late_Temp',
+            'during_late_VPD',
+            'during_peak_SPI3',
+            'during_late_PAR',
+            'during_late_CO2',
+            'during_late_SPI3',
+                  ]
+        x_list_current_year_fpath = {}
+        for x in x_list_current_year:
+            x_list_current_year_fpath[x] = join(self.datadir, f'X/{x}.npy')
+        x_list_current_year_fpath['SWE'] = join(data_root, 'GlobSnow_v3/SWE/per_pix_annual_1999-2018')
+        x_list_current_year_fpath['during_early_peak_MODIS_LAI'] = join(self.datadir, f'Y/during_early_peak_MODIS_LAI.npy')
+
+        # -------
+        x_list_previous_year = [
+            'early_start',
+            'during_early_peak_late_SPEI3',
+                      ]
+        x_list_previous_year_fpath = {}
+        for x in x_list_previous_year:
+            x_list_previous_year_fpath[x] = join(self.datadir, f'X/{x}.npy')
+        x_list_previous_year_fpath['during_early_peak_late_MODIS_LAI'] = join(self.datadir, f'Y/during_early_peak_late_MODIS_LAI.npy')
+        return x_list_current_year_fpath, x_list_previous_year_fpath
+
+
+    def current_year_corr(self):
+        outdir = join(self.this_class_arr,'current_year_corr')
+        T.mkdir(outdir)
+        outf = join(outdir,'corr.df')
+        x_list_current_year_fpath, _ =self.x_variables()
+        y_spatial_dict = self.y_variable()
+        all_corr = {}
+        for x_var in x_list_current_year_fpath:
+            if x_var == 'SWE':
+                spatial_dict = T.load_npy_dir(x_list_current_year_fpath[x_var])
+                spatial_dict_new = {}
+                for pix in spatial_dict:
+                    vals = spatial_dict[pix]
+                    vals[vals < -999] = np.nan
+                    spatial_dict_new[pix] = vals
+                spatial_dict = spatial_dict_new
+
+            else:
+                spatial_dict = T.load_npy(x_list_current_year_fpath[x_var])
+                arr = DIC_and_TIF().pix_dic_to_spatial_arr_mean(spatial_dict)
+            corr_dict = {}
+            p_dict = {}
+            for pix in tqdm(spatial_dict,desc=x_var):
+                x_val = spatial_dict[pix]
+                if not pix in y_spatial_dict:
+                    continue
+                if not x_var in ['early_start','during_early_peak_MODIS_LAI']:
+                    x_val = x_val[1:]
+                y_val = y_spatial_dict[pix]
+                try:
+                    x_val = T.detrend_vals(x_val)
+                    y_val = T.detrend_vals(y_val)
+                    r,p = T.nan_correlation(x_val,y_val)
+                except:
+                    print(x_var, len(x_val), len(y_val))
+                    continue
+                corr_dict[pix] = r
+                p_dict[pix] = p
+            key_corr = f'{x_var}_corr'
+            key_p = f'{x_var}_p'
+            all_corr[key_corr] = corr_dict
+            all_corr[key_p] = p_dict
+        df = T.spatial_dics_to_df(all_corr)
+        T.print_head_n(df,10)
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
+
+    def pre_year_corr(self):
+        outdir = join(self.this_class_arr,'pre_year_corr')
+        T.mkdir(outdir)
+        outf = join(outdir,'pre_corr.df')
+        _, x_list_previous_year_fpath =self.x_variables()
+        y_spatial_dict = self.y_variable()
+        all_corr = {}
+        for x_var in x_list_previous_year_fpath:
+            spatial_dict = T.load_npy(x_list_previous_year_fpath[x_var])
+            corr_dict = {}
+            p_dict = {}
+            for pix in tqdm(spatial_dict,desc=x_var):
+                x_val = spatial_dict[pix]
+                if not pix in y_spatial_dict:
+                    continue
+                y_val = y_spatial_dict[pix]
+                if not x_var in ['early_start','during_early_peak_late_MODIS_LAI']:
+                    x_val = x_val[:-1]
+                else:
+                    x_val = x_val[:-1]
+                    y_val = y_val[1:]
+                # print(x_var)
+                # print(x_var)
+                # print(len(x_val),len(y_val))
+                # exit()
+                try:
+                    x_val = T.detrend_vals(x_val)
+                    y_val = T.detrend_vals(y_val)
+                    r,p = T.nan_correlation(x_val,y_val) # todo: bug
+                except:
+                    print(x_var,len(x_val),len(y_val))
+                    continue
+                corr_dict[pix] = r
+                p_dict[pix] = p
+            key_corr = f'{x_var}_corr'
+            key_p = f'{x_var}_p'
+            all_corr[key_corr] = corr_dict
+            all_corr[key_p] = p_dict
+        df = T.spatial_dics_to_df(all_corr)
+        T.print_head_n(df,10)
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
+        pass
+
+    def current_year_corr_tif(self):
+        outdir = join(self.this_class_tif,'current_year_corr')
+        T.mkdir(outdir)
+        dff = join(self.this_class_arr,'current_year_corr','corr.df')
+        df = T.load_df(dff)
+        cols = df.columns.tolist()
+        cols.remove('pix')
+        for col in cols:
+            spatial_dict = T.df_to_spatial_dic(df,col)
+            outf = join(outdir,f'{col}.tif')
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict,outf)
+
+    def pre_year_corr_tif(self):
+        outdir = join(self.this_class_tif,'pre_year_corr')
+        T.mkdir(outdir)
+        dff = join(self.this_class_arr,'pre_year_corr','pre_corr.df')
+        df = T.load_df(dff)
+        cols = df.columns.tolist()
+        cols.remove('pix')
+        for col in cols:
+            spatial_dict = T.df_to_spatial_dic(df,col)
+            outf = join(outdir,f'{col}.tif')
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict,outf)
+
+    def corr_statistic(self):
+        spatial_dict_all = {}
+        fdir1 = join(self.this_class_tif,'current_year_corr')
+        fdir2 = join(self.this_class_tif,'pre_year_corr')
+        for f in T.listdir(fdir1):
+            if not f.endswith('.tif'):
+                continue
+            if '_p.tif' in f:
+                continue
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(join(fdir1,f))
+            var_name = 'current_'+f.split('.')[0]
+            spatial_dict_all[var_name] = spatial_dict
+        for f in T.listdir(fdir2):
+            if not f.endswith('.tif'):
+                continue
+            if '_p.tif' in f:
+                continue
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(join(fdir2,f))
+            var_name = 'pre_'+f.split('.')[0]
+            spatial_dict_all[var_name] = spatial_dict
+        df = T.spatial_dics_to_df(spatial_dict_all)
+        df = Main_flow_2.Dataframe_func(df).df
+        limited_area_list = T.get_df_unique_val_list(df,'limited_area')
+        variables_list = []
+        for var_i in spatial_dict_all:
+            variables_list.append(var_i)
+        variables_list.sort()
+        for ltd in limited_area_list:
+            df_ltd = df[df['limited_area']==ltd]
+            plt.figure(figsize=(4, 4))
+            mean_list = []
+            for var_i in variables_list:
+                vals = df_ltd[var_i].tolist()
+                vals_mean = np.nanmean(vals)
+                mean_list.append(vals_mean)
+            plt.barh(variables_list,mean_list)
+            plt.title(f'{ltd}')
+            plt.tight_layout()
+        plt.show()
+
+    def check_old_corr(self):
+        f1 = '/Volumes/NVME2T/greening_project_redo/data/1982_2018_final_wen/during_late_LAI3g_zscore.npy'
+        f2 = '/Volumes/NVME2T/greening_project_redo/data/lai3g_pheno/early_start.npy'
+        dict1 = T.load_npy(f1)
+        dict2 = T.load_npy(f2)
+        spatial_dict = {}
+        for pix in tqdm(dict1):
+            if not pix in dict2:
+                continue
+            vals1 = dict1[pix]
+            vals2 = dict2[pix]
+            vals1 = T.detrend_vals(vals1)
+            vals2 = T.detrend_vals(vals2)
+            if len(vals2) == 0:
+                continue
+            # print(len(vals1),len(vals2))
+            # exit()
+            try:
+                r,p = T.nan_correlation(dict1[pix],dict2[pix])
+            except:
+                continue
+            spatial_dict[pix] = r
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        plt.imshow(arr,vmin=-0.5,vmax=0.5,cmap='RdBu_r')
+        plt.colorbar()
+        plt.show()
+
+
+class All_variables_trend:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir(
+            'All_variables_trend',
+            result_root_this_script)
+        self.datadir = join(All_variables_single_corr().this_class_arr,'data')
+        pass
+
+    def run(self):
+        # self.phenology_df_to_spatial_dict()
+        # self.current_year_trend()
+        # self.pre_year_trend()
+        # self.y_trend()
+        # self.current_year_trend_tif()
+        # self.pre_year_trend_tif()
+        pass
+
+    def phenology_df_to_spatial_dict(self):
+        dff = join(self.datadir,'Phenology_predictors/MODIS_LAI/phenology_dataframe.df')
+        outf = join(self.datadir,'X/early_start.npy')
+        df = T.load_df(dff)
+        spatial_dict = T.df_to_spatial_dic(df,'early_start')
+        spatial_dict_new = {}
+        for pix in spatial_dict:
+            dict_i = spatial_dict[pix]
+            year_list = []
+            for year in dict_i:
+                if year > 2018:
+                    continue
+                year_list.append(year)
+            year_list.sort()
+            early_start_list = []
+            for year in year_list:
+                val = dict_i[year]
+                early_start_list.append(val)
+            early_start_list = np.array(early_start_list)
+            spatial_dict_new[pix] = early_start_list
+        T.save_npy(spatial_dict_new,outf)
+
+    def y_variable(self):
+        y_var = 'during_late_MODIS_LAI'
+        y_f = join(self.datadir, f'Y/{y_var}.npy')
+        y_dict = T.load_npy(y_f)
+        return y_dict
+
+    def x_variables(self):
+
+        x_list_current_year = [
+            'early_start',
+            'during_early_peak_late_SPEI3',
+            'during_late_Temp',
+            'during_late_VPD',
+            'during_peak_SPI3',
+            'during_late_PAR',
+            'during_late_CO2',
+            'during_late_SPI3',
+                  ]
+        x_list_current_year_fpath = {}
+        for x in x_list_current_year:
+            x_list_current_year_fpath[x] = join(self.datadir, f'X/{x}.npy')
+        x_list_current_year_fpath['SWE'] = join(data_root, 'GlobSnow_v3/SWE/per_pix_annual_1999-2018')
+        x_list_current_year_fpath['during_early_peak_MODIS_LAI'] = join(self.datadir, f'Y/during_early_peak_MODIS_LAI.npy')
+
+        # -------
+        x_list_previous_year = [
+            'early_start',
+            'during_early_peak_late_SPEI3',
+                      ]
+        x_list_previous_year_fpath = {}
+        for x in x_list_previous_year:
+            x_list_previous_year_fpath[x] = join(self.datadir, f'X/{x}.npy')
+        x_list_previous_year_fpath['during_early_peak_late_MODIS_LAI'] = join(self.datadir, f'Y/during_early_peak_late_MODIS_LAI.npy')
+        return x_list_current_year_fpath, x_list_previous_year_fpath
+
+
+    def current_year_trend(self):
+        outdir = join(self.this_class_arr,'current_year_trend')
+        T.mkdir(outdir)
+        outf = join(outdir,'trend.df')
+        x_list_current_year_fpath, _ =self.x_variables()
+        y_spatial_dict = self.y_variable()
+        all_corr = {}
+        for x_var in x_list_current_year_fpath:
+            if x_var == 'SWE':
+                spatial_dict = T.load_npy_dir(x_list_current_year_fpath[x_var])
+                spatial_dict_new = {}
+                for pix in spatial_dict:
+                    vals = spatial_dict[pix]
+                    vals[vals < -999] = np.nan
+                    spatial_dict_new[pix] = vals
+                spatial_dict = spatial_dict_new
+            else:
+                spatial_dict = T.load_npy(x_list_current_year_fpath[x_var])
+            corr_dict = {}
+            p_dict = {}
+            for pix in tqdm(spatial_dict,desc=x_var):
+                x_val = spatial_dict[pix]
+                try:
+                    a,b,r,p = T.nan_line_fit(list(range(len(x_val))),x_val)
+                except:
+                    a,p = np.nan,np.nan
+                corr_dict[pix] = a
+                p_dict[pix] = p
+            key_corr = f'{x_var}_corr'
+            key_p = f'{x_var}_p'
+            all_corr[key_corr] = corr_dict
+            all_corr[key_p] = p_dict
+        df = T.spatial_dics_to_df(all_corr)
+        T.print_head_n(df,10)
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
+
+    def pre_year_trend(self):
+        outdir = join(self.this_class_arr,'pre_year_trend')
+        T.mkdir(outdir)
+        outf = join(outdir,'pre_trend.df')
+        _, x_list_previous_year_fpath =self.x_variables()
+        y_spatial_dict = self.y_variable()
+        all_corr = {}
+        for x_var in x_list_previous_year_fpath:
+            spatial_dict = T.load_npy(x_list_previous_year_fpath[x_var])
+            trend_dict = {}
+            p_dict = {}
+            for pix in tqdm(spatial_dict,desc=x_var):
+                x_val = spatial_dict[pix]
+                try:
+                    a,b,r,p = T.nan_line_fit(list(range(len(x_val))),x_val)
+                except:
+                    a,p = np.nan,np.nan
+                trend_dict[pix] = a
+                p_dict[pix] = p
+            key_corr = f'{x_var}_corr'
+            key_p = f'{x_var}_p'
+            all_corr[key_corr] = trend_dict
+            all_corr[key_p] = p_dict
+        df = T.spatial_dics_to_df(all_corr)
+        T.print_head_n(df,10)
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
+    def y_trend(self):
+        y_spatial_dict = self.y_variable()
+        outdir = join(self.this_class_tif,'y_trend')
+        T.mkdir(outdir)
+        trend_dict = {}
+        p_dict = {}
+        for pix in tqdm(y_spatial_dict):
+            x_val = y_spatial_dict[pix]
+            try:
+                a, b, r, p = T.nan_line_fit(list(range(len(x_val))), x_val)
+            except:
+                a, p = np.nan, np.nan
+            trend_dict[pix] = a
+            p_dict[pix] = p
+        outf_a = join(outdir, 'MODIS_trend.tif')
+        outf_p = join(outdir, 'MODIS_p.tif')
+        DIC_and_TIF().pix_dic_to_tif(trend_dict, outf_a)
+        DIC_and_TIF().pix_dic_to_tif(p_dict, outf_p)
+
+    def current_year_trend_tif(self):
+        outdir = join(self.this_class_tif,'current_year_trend')
+        T.mkdir(outdir)
+        dff = join(self.this_class_arr,'current_year_trend','trend.df')
+        df = T.load_df(dff)
+        cols = df.columns.tolist()
+        cols.remove('pix')
+        for col in cols:
+            spatial_dict = T.df_to_spatial_dic(df,col)
+            outf = join(outdir,f'{col}.tif')
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict,outf)
+
+    def pre_year_trend_tif(self):
+        outdir = join(self.this_class_tif,'pre_year_trend')
+        T.mkdir(outdir)
+        dff = join(self.this_class_arr,'pre_year_trend','pre_trend.df')
+        df = T.load_df(dff)
+        cols = df.columns.tolist()
+        cols.remove('pix')
+        for col in cols:
+            spatial_dict = T.df_to_spatial_dic(df,col)
+            outf = join(outdir,f'{col}.tif')
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict,outf)
 
 def gen_ocean():
     arr = np.ones((360, 720))
@@ -1575,9 +2026,11 @@ def main():
     # Dataframe_moving_window().run()
     # Moving_window_p_correlation().run()
     # Moving_window_single_correlation().run()
-    Bivariate_plot().run()
+    # Bivariate_plot().run()
     # Test_wen_data().run()
     # Tipping_point().run()
+    All_variables_single_corr().run()
+    # All_variables_trend().run()
     # gen_ocean()
     pass
 
