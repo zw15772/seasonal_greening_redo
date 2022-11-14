@@ -11,6 +11,7 @@ global_start_year = 1982
 land_tif = join('/Volumes/NVME2T/greening_project_redo/conf/land.tif')
 import Main_flow_2
 data_root = '/Volumes/NVME2T/greening_project_redo/data/'
+
 class Dataframe:
 
     def __init__(self):
@@ -342,9 +343,16 @@ class Dataframe_per_value:
         self.datadir = All_variables_single_corr().datadir
         self.start_year = 2000
 
-        pass
 
     def run(self):
+        self.detrend()
+        self.not_detrend()
+        pass
+
+
+    def detrend(self):
+        outdir = join(self.this_class_arr, 'detrend')
+        T.mkdir(outdir, force=True)
         # x_list_current_year_fpath, x_list_previous_year_fpath = All_variables_single_corr().x_variables()
         all_x_variables = All_variables_single_corr().all_x_variables()
         print(all_x_variables.keys())
@@ -360,11 +368,13 @@ class Dataframe_per_value:
             pix_list = set(pix_list)
             limited_area_pix_dict[ltd] = pix_list
         for ltd in limited_area_pix_dict:
+            print(ltd)
+            outf = join(outdir, f'{ltd}.df')
             selected_pix_list = limited_area_pix_dict[ltd]
             data_dict = {}
             for x_var in all_x_variables:
-                if 'CO2' in x_var:
-                    continue
+                # if 'CO2' in x_var:
+                #     continue
                 if 'SWE' in x_var:
                     spatial_dict = T.load_npy_dir(all_x_variables[x_var])
                     spatial_dict_new = {}
@@ -377,6 +387,7 @@ class Dataframe_per_value:
                     spatial_dict = T.load_npy(all_x_variables[x_var])
                 year_list = []
                 all_vals_list = []
+                all_pix_list = []
                 for pix in tqdm(selected_pix_list, desc=x_var):
                     if not pix in spatial_dict:
                         year_list.extend(list(range(self.start_year, 2019)))
@@ -384,6 +395,117 @@ class Dataframe_per_value:
                         continue
                     x_val = spatial_dict[pix]
                     if x_var in ['current_during_early_peak_late_SPEI3',
+                                 'current_during_late_CO2',
+                                 'current_during_late_Temp',
+                                 'current_during_late_VPD',
+                                 'current_during_peak_SPI3',
+                                 'current_during_late_PAR',
+                                 'current_during_late_SPI3',
+                                 'current_SWE',
+                                 ]:
+                        x_val = x_val[1:]
+                    elif x_var in [
+                        'pre_early_start', 'pre_during_early_peak_late_MODIS_LAI'
+                    ]:
+                        x_val = list(x_val)
+                        x_val = x_val[1:]
+                        x_val.append(np.nan)
+                        x_val = np.array(x_val)
+                    elif x_var in [
+                        'pre_during_early_peak_late_SPEI3',
+                    ]:
+                        x_val = x_val[1:]
+                    elif x_var in [
+                        'current_early_start', 'current_during_early_peak_MODIS_LAI'
+                    ]:
+                        x_val = x_val
+                    else:
+                        continue
+                    if not len(x_val) == 19:
+                        year_list.extend(list(range(self.start_year, 2019)))
+                        all_vals_list.extend([np.nan] * 19)
+                        # all_pix_list.append(pix)
+                        continue
+                    x_val = Pre_Process().z_score(x_val)
+
+                    if type(x_val) == int:
+                        year_list.extend(list(range(self.start_year, 2019)))
+                        all_vals_list.extend([np.nan] * 19)
+                        continue
+                    x_val = T.detrend_vals(x_val)
+                    for i, val in enumerate(x_val):
+                        year = self.start_year + i
+                        year_list.append(year)
+                        all_vals_list.append(val)
+                        all_pix_list.append(pix)
+                data_dict[x_var] = all_vals_list
+                data_dict['year'] = year_list
+                data_dict['pix'] = all_pix_list
+            all_vals_list = []
+            for pix in tqdm(selected_pix_list):
+                # if not pix in spatial_dict:
+                #     year_list.extend(list(range(self.start_year, 2019)))
+                #     all_vals_list.extend([np.nan] * 19)
+                #     continue
+                x_val = y_spatial_dict[pix]
+                x_val = Pre_Process().z_score(x_val)
+                x_val = T.detrend_vals(x_val)
+                for i, val in enumerate(x_val):
+                    all_vals_list.append(val)
+            data_dict['late_MODIS_LAI'] = all_vals_list
+            df_out = pd.DataFrame(data_dict)
+            # df_out = df_out.dropna()
+            # T.print_head_n(df_out, 10)
+            T.save_df(df_out, outf)
+            T.df_to_excel(df_out, outf)
+        pass
+
+    def not_detrend(self):
+        outdir = join(self.this_class_arr,'not_detrend')
+        T.mkdir(outdir,force=True)
+        # x_list_current_year_fpath, x_list_previous_year_fpath = All_variables_single_corr().x_variables()
+        all_x_variables = All_variables_single_corr().all_x_variables()
+        print(all_x_variables.keys())
+        exit()
+        y_spatial_dict = All_variables_single_corr().y_variable()
+        df = T.spatial_dics_to_df({'y': y_spatial_dict})
+        df = Main_flow_2.Dataframe_func(df).df
+        limited_area_list = T.get_df_unique_val_list(df, 'limited_area')
+        limited_area_pix_dict = {}
+        for ltd in limited_area_list:
+            df_ltd = df[df['limited_area'] == ltd]
+            pix_list = df_ltd['pix'].values.tolist()
+            pix_list = set(pix_list)
+            limited_area_pix_dict[ltd] = pix_list
+        for ltd in limited_area_pix_dict:
+            print(ltd)
+            outf = join(outdir, f'{ltd}.df')
+            selected_pix_list = limited_area_pix_dict[ltd]
+            data_dict = {}
+            for x_var in all_x_variables:
+                # if 'CO2' in x_var:
+                #     continue
+                if 'SWE' in x_var:
+                    spatial_dict = T.load_npy_dir(all_x_variables[x_var])
+                    spatial_dict_new = {}
+                    for pix in spatial_dict:
+                        vals = spatial_dict[pix]
+                        vals[vals < -999] = np.nan
+                        spatial_dict_new[pix] = vals
+                    spatial_dict = spatial_dict_new
+                else:
+                    spatial_dict = T.load_npy(all_x_variables[x_var])
+                year_list = []
+                all_vals_list = []
+                all_pix_list = []
+                for pix in tqdm(selected_pix_list, desc=x_var):
+                    if not pix in spatial_dict:
+                        year_list.extend(list(range(self.start_year, 2019)))
+                        all_vals_list.extend([np.nan] * 19)
+                        continue
+                    x_val = spatial_dict[pix]
+                    if x_var in ['current_during_early_peak_late_SPEI3',
+                                 'current_during_late_CO2',
                                  'current_during_late_Temp',
                                  'current_during_late_VPD',
                                  'current_during_peak_SPI3',
@@ -412,13 +534,21 @@ class Dataframe_per_value:
                     if not len(x_val) == 19:
                         year_list.extend(list(range(self.start_year, 2019)))
                         all_vals_list.extend([np.nan] * 19)
+                        # all_pix_list.append(pix)
+                        continue
+                    x_val = Pre_Process().z_score(x_val)
+                    if type(x_val) == int:
+                        year_list.extend(list(range(self.start_year, 2019)))
+                        all_vals_list.extend([np.nan] * 19)
                         continue
                     for i,val in enumerate(x_val):
                         year = self.start_year + i
                         year_list.append(year)
                         all_vals_list.append(val)
+                        all_pix_list.append(pix)
                 data_dict[x_var] = all_vals_list
                 data_dict['year'] = year_list
+                data_dict['pix'] = all_pix_list
             all_vals_list = []
             for pix in tqdm(selected_pix_list):
                 # if not pix in spatial_dict:
@@ -426,13 +556,193 @@ class Dataframe_per_value:
                 #     all_vals_list.extend([np.nan] * 19)
                 #     continue
                 x_val = y_spatial_dict[pix]
+                x_val = Pre_Process().z_score(x_val)
                 for i, val in enumerate(x_val):
                     all_vals_list.append(val)
             data_dict['late_MODIS_LAI'] = all_vals_list
             df_out = pd.DataFrame(data_dict)
             # df_out = df_out.dropna()
-            T.print_head_n(df_out, 10)
-            exit()
+            # T.print_head_n(df_out, 10)
+            T.save_df(df_out, outf)
+            T.df_to_excel(df_out, outf)
+
+
+class RF_per_value:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('RF_per_value',
+                                                                                       result_root_this_script)
+        pass
+
+    def run(self):
+
+        self.run_RF(is_detrend=True)
+        self.run_RF(is_detrend=False)
+        self.plot_RF_results(is_detrend=True)
+        self.plot_RF_results(is_detrend=False)
+
+    def run_RF(self,is_detrend=True):
+        x_var_list = self.x_variables(is_detrend)
+        y_var = self.y_variable()
+        if is_detrend:
+            df_dir = join(Dataframe_per_value().this_class_arr,'detrend')
+            outdir = join(self.this_class_arr, 'detrend')
+        else:
+            df_dir = join(Dataframe_per_value().this_class_arr, 'not_detrend')
+            outdir = join(self.this_class_arr,'not_detrend')
+        T.mkdir(outdir)
+        for f in T.listdir(df_dir):
+            if not f.endswith('.df'):
+                continue
+            fpath = join(df_dir,f)
+            df = T.load_df(fpath)
+            X = df[x_var_list]
+            Y = df[y_var]
+            # print(outf)
+            # plt.figure()
+            # DIC_and_TIF().plot_df_spatial_pix(df_HI,land_tif)
+            # plt.title(f'{year_range[0]}-{year_range[1]}_{HI_reclass}')
+            result = self.train_classfication_permutation_importance(X,Y,x_var_list,y_var)
+            outf = join(outdir,f'{f}')
+            T.save_npy(result,outf)
+
+
+    def plot_RF_results(self,is_detrend=True):
+        y = self.y_variable()
+        if is_detrend:
+            fdir = join(self.this_class_arr,f'detrend')
+            outdir = join(self.this_class_png,f'detrend')
+        else:
+            fdir = join(self.this_class_arr,f'not_detrend')
+            outdir = join(self.this_class_png,f'not_detrend')
+        T.mkdir(outdir)
+        T.open_path_and_file(outdir)
+        x_list = self.x_variables(is_detrend)
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            result = T.load_npy(fpath)
+            print(result)
+            # exit()
+            importances_mean = result['importances_mean']
+            # err = result['importances_std']
+            plt.figure(figsize=(4, 4))
+            plt.barh(x_list,importances_mean)
+            plt.title(f)
+            # plt.xlim(0,0.4)
+            plt.tight_layout()
+            outf = join(outdir,f'{f}.pdf')
+            plt.savefig(outf)
+            plt.close()
+        # exit()
+        pass
+
+    def y_variable(self):
+        return 'late_MODIS_LAI'
+
+    def x_variables(self,is_detrend):
+        if is_detrend == True:
+            x_list = [
+                'current_early_start',
+                'current_during_early_peak_late_SPEI3',
+                'current_during_late_Temp',
+                'current_during_late_VPD',
+                'current_during_peak_SPI3',
+                'current_during_late_PAR',
+                'current_during_late_SPI3',
+                'current_SWE',
+                'current_during_early_peak_MODIS_LAI',
+                'pre_early_start',
+                'pre_during_early_peak_late_SPEI3',
+                'pre_during_early_peak_late_MODIS_LAI',
+            ]
+        else:
+            x_list = [
+                'current_early_start',
+                'current_during_early_peak_late_SPEI3',
+                'current_during_late_Temp',
+                'current_during_late_VPD',
+                'current_during_peak_SPI3',
+                'current_during_late_PAR',
+                'current_during_late_SPI3',
+                'current_SWE',
+                'current_during_early_peak_MODIS_LAI',
+                'pre_early_start',
+                'pre_during_early_peak_late_SPEI3',
+                'pre_during_early_peak_late_MODIS_LAI',
+                'current_during_late_CO2',
+            ]
+        return x_list
+
+    def __plot_PDP(self,col_name, data, model):
+        df = self.__get_PDPvalues(col_name, data, model)
+        plt.rcParams.update({'font.size': 16})
+        plt.rcParams["figure.figsize"] = (6,5)
+        # fig, ax = plt.subplots()
+        # ax.plot(data[col_name], np.zeros(data[col_name].shape)+min(df['PDs'])-1, 'k|', ms=15)  # rug plot
+        plt.plot(df[col_name], df['PDs'], lw = 2)
+        plt.ylabel(self.y_variable())
+        plt.xlabel(col_name)
+        # plt.tight_layout()
+
+    def __get_PDPvalues(self, col_name, data, model, grid_resolution=50):
+        '''
+        :param col_name: a variable
+        :param data: a dataframe of x variables
+        :param model: a random forest model
+        :param grid_resolution: the number of points in the partial dependence plot
+        :return: a dataframe of the partial dependence plot values
+        '''
+        Xnew = data.copy()
+        sequence = np.linspace(np.min(data[col_name]), np.max(data[col_name]), grid_resolution) # create a sequence of values
+        Y_pdp = []
+        Y_pdp_std = []
+        for each in sequence:
+            Xnew[col_name] = each
+            Y_temp = model.predict(Xnew)
+            Y_pdp.append(np.mean(Y_temp))
+            Y_pdp_std.append(np.std(Y_temp))
+        return pd.DataFrame({col_name: sequence, 'PDs': Y_pdp, 'PDs_std': Y_pdp_std})
+
+
+    def train_classfication_permutation_importance(self,X_input,Y_input,x_list,y):
+        # X = X.loc[:, ~X.columns.duplicated()]
+        # outfir_fig_dir=self.this_class_arr+'train_classfication_fig_driver/'  #修改
+        # Tools().mk_dir(outfir_fig_dir)
+        print('training...')
+        rf = RandomForestRegressor(n_jobs=6,n_estimators=100,)
+        X_input=X_input[x_list]
+        X_input=pd.DataFrame(X_input)
+        df_new = pd.concat([X_input,Y_input], axis=1)
+        df_new = df_new.dropna()
+        X = df_new[x_list]
+        Y = df_new[y]
+
+        X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=1)
+
+        rf.fit(X_train,Y_train)
+        print('training finished')
+        score = rf.score(X_test,Y_test)
+        coef = rf.feature_importances_
+
+        pred=rf.predict(X_test)
+        r = stats.pearsonr(pred,Y_test)[0]
+
+        print('permuation importance...')
+        result = permutation_importance(rf, X_train, Y_train, n_repeats=10,
+                                        random_state=42)
+        # result = {}
+        # result['importances_mean'] = coef
+        print('permuation importance finished')
+        x_list_dict = dict(zip(x_list, list(range(len(x_list)))))
+        importances_mean = result['importances_mean']
+        imp_dict = dict(zip(x_list, importances_mean))
+        max_key = T.pick_max_key_val_from_dict(imp_dict)
+        max_V = x_list_dict[max_key]
+        result['score'] = score
+        result['r'] = r
+        result['max_var'] = max_key
+
+        return result
 
 class RF:
 
@@ -817,24 +1127,17 @@ class Partial_corr_per_pix:
         self.year_range_list = [(1982, 2018), ]
 
     def run(self):
-        # dff = Dataframe().dff
+        dff = Dataframe().dff
         # df = T.load_df(dff)
         # self.run_p_corr(df)
         self.plot_p_corr()
         pass
 
-
     def y_variable(self):
         return 'LAI3g_late'
         # return 'eos_anomaly'
     def x_variables(self):
-        # x_list = ['LAI3g_earlier','eos_anomaly','Temp_peak','Temp_late','CCI_SM_peak','CCI_SM_late','VPD_late']
-        # x_list = ['LAI3g_earlier','Temp_late','CCI_SM_peak','CCI_SM_late','VPD_late','CO2_late','PAR_late']
-        # x_list = ['LAI3g_earlier','Temp_late','SPEI3_peak','SPEI3_late','VPD_late','PAR_late','photo_period','eos_anomaly']
-        # x_list = ['LAI3g_earlier','Temp_late','SPEI3_peak','SPEI3_late','VPD_late','PAR_late','photo_period']
         x_list = ['LAI3g_earlier','Temp_late','SPEI3_peak','SPEI3_late','VPD_late','PAR_late']
-        # x_list = ['LAI3g_earlier','Temp_peak','Temp_late','CCI_SM_peak','CCI_SM_late','VPD_late']
-        # x_list = ['LAI3g_earlier','PAR_late','Temp_late','CCI_SM_peak','CCI_SM_late','VPD_late']
         return x_list
 
     def run_p_corr(self,df):
@@ -1626,9 +1929,6 @@ class Bivariate_plot:
         spatial_dict2 = DIC_and_TIF().spatial_arr_to_dic(arr2)
         dict_all = {'arr1':spatial_dict1,'arr2':spatial_dict2}
         df = T.spatial_dics_to_df(dict_all)
-        # print(df)
-        # exit()
-
 
         blend_arr = []
         for r in range(len(arr1)):
@@ -1677,12 +1977,13 @@ class All_variables_single_corr:
 
     def run(self):
         # self.phenology_df_to_spatial_dict()
-        self.current_year_corr()
+        # self.current_year_corr()
         # self.pre_year_corr()
         # self.current_year_corr_tif()
         # self.pre_year_corr_tif()
         # self.corr_statistic()
         # self.check_old_corr()
+        self.MAT_MAP_matrix()
         pass
 
     def phenology_df_to_spatial_dict(self):
@@ -1724,6 +2025,7 @@ class All_variables_single_corr:
             'during_late_PAR',
             'during_late_CO2',
             'during_late_SPI3',
+            'during_early_peak_late_SPI3',
                   ]
         x_list_current_year_fpath = {}
         for x in x_list_current_year:
@@ -1934,6 +2236,63 @@ class All_variables_single_corr:
         plt.colorbar()
         plt.show()
 
+    def add_MAT_MAP_to_df(self,df):
+        MAT_f = join(data_root,'MAT_MAP','MAT.tif')
+        MAP_f = join(data_root,'MAT_MAP','MAP.tif')
+
+        dict_mat = DIC_and_TIF().spatial_tif_to_dic(MAT_f)
+        dict_map = DIC_and_TIF().spatial_tif_to_dic(MAP_f)
+        df = T.add_spatial_dic_to_df(df,dict_mat,'MAT')
+        df = T.add_spatial_dic_to_df(df,dict_map,'MAP')
+        return df
+
+
+    def MAT_MAP_matrix(self):
+        # tif = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/tif/All_variables_single_corr/current_year_corr/during_early_peak_late_SPEI3_corr.tif'
+        fdir = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/tif/All_variables_single_corr/current_year_corr'
+        outdir = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/tif/All_variables_single_corr/current_year_corr_MAT_MAP'
+        T.mkdir(outdir)
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            if '_p.tif' in f:
+                continue
+            tif = join(fdir,f)
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(tif)
+            df = T.spatial_dics_to_df({'corr':spatial_dict})
+            df = self.add_MAT_MAP_to_df(df)
+            df = Main_flow_2.Dataframe_func(df).df
+            mat_bins = np.arange(-20,21,2)
+            map_bins = np.arange(0,2100,100)
+            mat_df_group,bins_list_str = T.df_bin(df,'MAT',mat_bins)
+            matrix = []
+            x_label = []
+            y_label = []
+            for name_mat,mat_df_group_i in mat_df_group:
+                y_label.append(name_mat.left)
+                map_df_group,bins_list_str = T.df_bin(mat_df_group_i,'MAP',map_bins)
+                temp = []
+                for name_map,map_df_group_i in map_df_group:
+                    if not name_map.left in x_label:
+                        x_label.append(name_map.left)
+                    vals = map_df_group_i['corr'].tolist()
+                    if len(vals) < 10:
+                        temp.append(np.nan)
+                        continue
+                    mean = np.nanmean(vals)
+                    temp.append(mean)
+                matrix.append(temp)
+            plt.figure(figsize=(8, 8))
+            plt.imshow(matrix,vmin=-0.5,vmax=0.5,cmap='RdBu_r')
+            plt.xticks(range(len(x_label)),x_label,rotation=90)
+            plt.yticks(range(len(y_label)),y_label)
+            plt.colorbar()
+            plt.title(f)
+            plt.tight_layout()
+            outf = join(outdir,f+'.pdf')
+            plt.savefig(outf)
+            plt.close()
+
 
 class All_variables_trend:
 
@@ -2127,7 +2486,8 @@ def gen_ocean():
 
 def main():
     # Dataframe().run()
-    Dataframe_per_value().run()
+    # Dataframe_per_value().run()
+    # RF_per_value().run()
     # RF().run()
     # Partial_corr().run()
     # Partial_corr_per_pix().run()
@@ -2139,7 +2499,7 @@ def main():
     # Bivariate_plot().run()
     # Test_wen_data().run()
     # Tipping_point().run()
-    # All_variables_single_corr().run()
+    All_variables_single_corr().run()
     # All_variables_trend().run()
     # gen_ocean()
     pass
