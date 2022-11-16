@@ -3,6 +3,8 @@ import time
 import zipfile
 
 import matplotlib.pyplot as plt
+import numpy as np
+import telebot.util
 import xarray as xr
 from __init__ import *
 import scipy.io as sio
@@ -1167,12 +1169,13 @@ class LAI_4g:
         # self.mat_to_tif()
         # self.resample()
         # self.per_pix()
-        # self.hants()
+        self.hants()
         # self.check_hants()
         # self.climatology_mean()
         # self.per_pix_climatology_mean()
         # self.hants_climatology_mean()
-        self.transform_hants()
+        # self.transform_hants()
+        self.check_original_data()
         pass
 
     def mat_to_tif(self):
@@ -1360,7 +1363,27 @@ class LAI_4g:
                 spatial_dict[pix] = vals
             T.save_npy(spatial_dict,join(outdir,f))
 
-
+    def check_original_data(self):
+        fdir = join(self.datadir,'per_pix')
+        spatial_dict = T.load_npy_dir(fdir)
+        spatial_dict_new = {}
+        for pix in spatial_dict:
+            r,c = pix
+            if r > 120:
+                continue
+            vals = spatial_dict[pix]
+            if T.is_all_nan(vals):
+                continue
+            spatial_dict_new[pix] = vals
+        df = T.spatial_dics_to_df({'LAI4g':spatial_dict_new})
+        vals_all = df['LAI4g'].tolist()
+        vals_all = np.array(vals_all)
+        vals_all_mean = np.nanmean(vals_all,axis=0)
+        date_list = self.get_date_list()
+        plt.plot(date_list,vals_all_mean)
+        plt.show()
+        # DIC_and_TIF().plot_df_spatial_pix(df,global_land_tif)
+        # plt.show()
 
 
 class LAI_3g:
@@ -1542,6 +1565,62 @@ def seasonal_split_ly_NDVI():
         outf = join(outdir,season)
         T.save_npy(annual_dic,outf)
 
+
+class MODIS_LAI:
+    def __init__(self):
+        data_root = '/Volumes/NVME2T/greening_project_redo/data'
+        self.datadir = join(data_root,'MODIS_LAI')
+        pass
+
+    def run(self):
+        # self.per_pix()
+        self.hants()
+        pass
+
+    def per_pix(self):
+        fdir = join(self.datadir,'tif_05')
+        outdir = join(self.datadir,'per_pix')
+        T.mk_dir(outdir)
+        Pre_Process().data_transform(fdir,outdir)
+
+    def hants(self):
+        tif_dir = join(self.datadir,'tif_05')
+        fdir = join(self.datadir,'per_pix')
+        outdir = join(self.datadir,'per_pix_hants')
+        T.mk_dir(outdir)
+        date_obj_list = []
+        for f in T.listdir(tif_dir):
+            yyyy,mm,dd = Pre_Process().get_year_month_day(f,date_fmt='doy')
+            date_obj = datetime.datetime(int(yyyy),int(mm),int(dd))
+            date_obj_list.append(date_obj)
+        for f in T.listdir(fdir):
+            outf = join(outdir, f'{f}')
+            spatial_dict = T.load_npy(join(fdir, f))
+            date_list = date_obj_list
+            all_result = {}
+            for pix in tqdm(spatial_dict):
+                r, c = pix
+                if r > 120:
+                    continue
+                vals = spatial_dict[pix]
+                vals[vals < -9999] = np.nan
+                if T.is_all_nan(vals):
+                    continue
+                vals[np.isnan(vals)] = 0
+                # print(vals)
+                try:
+                    hants_results_dict = HANTS().hants_interpolate(vals, date_list, valid_range=(0, 10))
+                except:
+                    continue
+                all_result[pix] = hants_results_dict
+            if len(all_result) == 0:
+                continue
+            T.save_npy(all_result, outf)
+            # df = T.dic_to_df(all_result,'pix')
+            # T.save_df(df,outf)
+            # T.df_to_excel(df,outf.replace('.df',''))
+
+        pass
 
 
 class MODIS_LAI_BU_CMG:
@@ -2317,13 +2396,17 @@ class SPI:
 class SWE:
 
     def __init__(self):
-        self.datadir = '/Volumes/NVME2T/greening_project_redo/data/GlobSnow_v3'
+        self.datadir = '/Volumes/NVME2T/greening_project_redo/data/GlobSnow_v3/SWE'
         pass
 
     def run(self):
         # self.nc_to_tif()
         # self.projection_trans()
-        self.per_pix()
+        # self.per_pix()
+        # self.monthly_to_annual_tif()
+        # self.per_pix_annual()
+        # self.per_pix_annual_1999_2018()
+        self.per_pix_annual_1999_2018_one_file()
         pass
 
 
@@ -2355,7 +2438,7 @@ class SWE:
             self.kernel_nc_to_tif(fpath,'swe',outpath)
 
     def projection_trans(self):
-        nc_f = join(self.datadir,'nc','197902_northern_hemisphere_monthly_biascorrected_swe_0.25grid.nc')
+        nc_f = join(self.datadir,'nc','197901_northern_hemisphere_monthly_swe_0.25grid.nc')
         fdir = join(self.datadir, 'tif')
         outdir = join(self.datadir, 'tif_wgs84')
         ncin = Dataset(nc_f, 'r')
@@ -2379,12 +2462,97 @@ class SWE:
             year = date_str[:4]
             month = date_str[4:6]
             year = int(year)
-            if year < 1982:
-                continue
-            if year > 2018:
-                continue
             flist.append(fpath)
         Pre_Process().data_transform_with_date_list(fdir,outdir,flist)
+
+    def get_date_list(self):
+        fdir = join(self.datadir,'tif')
+        date_list = []
+        for f in T.listdir(fdir):
+            date_str = f.split('.')[0]
+            year = date_str[:4]
+            month = date_str[4:6]
+            year = int(year)
+            month = int(month)
+            date_obj = datetime.datetime(year,month,1)
+            date_list.append(date_obj)
+        return date_list
+
+
+    def monthly_to_annual_tif(self):
+        date_list = self.get_date_list()
+        fdir = join(self.datadir,'per_pix')
+        outdir = join(self.datadir,'tif_annual')
+        T.mk_dir(outdir)
+        spatial_dict = T.load_npy_dir(fdir)
+        annual_vals_dict = {}
+        for pix in tqdm(spatial_dict):
+            vals = spatial_dict[pix]
+            vals[vals < 0] = np.nan
+            if T.is_all_nan(vals):
+                continue
+            annual_dict = {}
+            for i,val in enumerate(vals):
+                date = date_list[i]
+                year = date.year
+                month = date.month
+                if month >= 9:
+                    year += 1
+                if year not in annual_dict:
+                    annual_dict[year] = []
+                annual_dict[year].append(val)
+            annual_sum = {}
+            for year in annual_dict:
+                vals = annual_dict[year]
+                vals = np.array(vals)
+                annual_sum[year] = np.nansum(vals)
+            annual_vals_dict[pix] = annual_sum
+        df = T.dic_to_df(annual_vals_dict,'pix')
+        cols = df.columns.tolist()
+        cols.remove('pix')
+        for c in cols:
+            spatial_dict_i = T.df_to_spatial_dic(df,c)
+            outf = join(outdir,str(c)+'.tif')
+            arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_i)
+            arr = np.array(arr,dtype=np.float32)
+            arr[arr<=0] = np.nan
+            DIC_and_TIF().arr_to_tif(arr,outf)
+
+    def per_pix_annual(self):
+        fdir = join(self.datadir,'tif_annual')
+        outdir = join(self.datadir,'per_pix_annual')
+        T.mk_dir(outdir)
+        flist = []
+        for f in T.listdir(fdir):
+            year = f.split('.')[0]
+            fpath = join(fdir,f)
+            year = int(year)
+            if year <= 1981:
+                continue
+            flist.append(f)
+        Pre_Process().data_transform_with_date_list(fdir,outdir,flist)
+
+    def per_pix_annual_1999_2018(self):
+        fdir = join(self.datadir, 'tif_annual')
+        outdir = join(self.datadir, 'per_pix_annual_1999-2018')
+        T.mk_dir(outdir)
+        flist = []
+        for f in T.listdir(fdir):
+            year = f.split('.')[0]
+            fpath = join(fdir, f)
+            year = int(year)
+            if year < 1999:
+                continue
+            flist.append(f)
+        Pre_Process().data_transform_with_date_list(fdir, outdir, flist)
+
+    def per_pix_annual_1999_2018_one_file(self):
+        fdir = join(self.datadir, 'per_pix_annual_1999-2018')
+        outdir = join(self.datadir, 'per_pix_annual_1999-2018_one_file')
+        T.mk_dir(outdir)
+        outf = join(outdir,'SWE_1999-2018.npy')
+        spatial_dict = T.load_npy_dir(fdir)
+        T.save_npy(spatial_dict,outf)
 
 
 
@@ -2396,6 +2564,7 @@ def main():
     # GLC2000().run()
     # CCI_SM().run()
     # LAI_4g().run()
+    MODIS_LAI().run()
     # LAI_3g().run()
     # VODCA().run()
     # LAI_4g_v101().run()
@@ -2407,7 +2576,7 @@ def main():
     # Terraclimate().run()
     # ERA().run()
     # SPI().run()
-    SWE().run()
+    # SWE().run()
     # check_cci_sm()
     # f = '/Volumes/NVME2T/greening_project_redo/data/GEE_AVHRR_LAI/per_pix_clean/per_pix_dic_005.npy'
     # dic = T.load_npy(f)
