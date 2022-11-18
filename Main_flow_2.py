@@ -1,4 +1,6 @@
 # coding=utf-8
+import tempfile
+
 import matplotlib.pyplot as plt
 
 from __init__ import *
@@ -121,6 +123,276 @@ class Phenology_plot_LAI3g:
         plt.ylabel('LAI 3g (m2/m2)')
 
 
+class Phenology_LAI4g:
+
+    def __init__(self):
+        self.this_class_arr = '/Volumes/NVME2T/greening_project_redo/Result/LAI4g/arr'
+        T.mkdir(self.this_class_arr)
+        pass
+
+    def run(self):
+        self.every_year_phenology()
+        # self.annual_mean_phenology()
+        # self.annual_mean_phenology1()
+        # self.annual_mean_phenology2()
+        # self.transform_phenology()
+        # self.check_annual_mean_phenology()
+        pass
+
+
+    def every_year_phenology(self,threshold_i=0.2):
+        out_dir = join(self.this_class_arr, 'every_year_phenology')
+        T.mkdir(out_dir,force=True)
+        outf = join(out_dir,'every_year_phenology.df')
+        hants_smooth_dir = '/Volumes/NVME2T/greening_project_redo/data/LAI4g/new_221109/hants'
+        result_dic = {}
+        for f in T.listdir(hants_smooth_dir):
+            hants_smooth_f = join(hants_smooth_dir,f)
+            hants_dic = T.load_npy(hants_smooth_f)
+            for pix in tqdm(hants_dic,desc=f):
+                hants_dict_i = hants_dic[pix]
+                every_year_dict = {}
+                for year in hants_dict_i:
+                    vals = hants_dict_i[year]
+                    vals = np.array(vals)
+                    vals[np.isnan(vals)] = 0
+                    result = self.pick_phenology(vals,threshold_i)
+                    for key in result:
+                        if not key in every_year_dict:
+                            every_year_dict[key] = []
+                        every_year_dict[key].append(result[key])
+                result_dic[pix] = every_year_dict
+        df = T.dic_to_df(result_dic,'pix')
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
+    def annual_mean_phenology2(self,threshold_i=0.2):
+        # use climatology mean to calculate phenology
+        hants_smooth_f = '/Volumes/NVME2T/greening_project_redo/data/LAI4g/new_221109/hants_climatology_mean/hants_climatology_mean.npy'
+        hants_dic = T.load_npy(hants_smooth_f)
+        outdir = join(self.this_class_arr, 'annual_mean_phenology2')
+        T.mkdir(outdir,force=True)
+        result_dic = {}
+        for pix in tqdm(hants_dic):
+            vals = hants_dic[pix]
+            vals = np.array(vals)
+            vals[np.isnan(vals)] = 0
+            result = self.pick_phenology(vals, threshold_i)
+            result_dic[pix] = result
+        df = T.dic_to_df(result_dic, 'pix')
+        outf = join(outdir, 'annual_mean_phenology2.df')
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+        # spatial_dict = T.df_to_spatial_dic(df, 'late_end')
+        # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        # color_list = ['#007F00', '#FFFCCA', '#793D8A']
+        # cmap1 = sns.blend_palette(color_list[::-1], as_cmap=True, )
+        # cmap2 = sns.blend_palette(color_list, as_cmap=True, )
+        # cmap_dict = {'SOS': cmap2, 'EOS': cmap1, 'GS_length': cmap1}
+        # plt.imshow(arr, cmap=cmap_dict['EOS'], vmin=220, vmax=350)
+        # plt.colorbar()
+        # plt.show()
+
+    def annual_mean_phenology1(self,threshold_i=0.2):
+        out_dir = join(self.this_class_arr, 'every_year_phenology')
+        T.mkdir(out_dir,force=True)
+        outf = join(out_dir,'every_year_phenology.df')
+        hants_smooth_dir = '/Volumes/NVME2T/greening_project_redo/data/LAI4g/new_221109/hants'
+        result_dic = {}
+        for f in T.listdir(hants_smooth_dir):
+            hants_smooth_f = join(hants_smooth_dir,f)
+            hants_dic = T.load_npy(hants_smooth_f)
+            for pix in tqdm(hants_dic,desc=f):
+                hants_dict_i = hants_dic[pix]
+                every_year_dict = {}
+                vals_all = []
+                for year in hants_dict_i:
+                    vals = hants_dict_i[year]
+                    vals = np.array(vals)
+                    vals_all.append(vals)
+                vals_all = np.array(vals_all)
+                vals_all_mean = np.nanmean(vals_all,axis=0)
+                plt.plot(vals_all_mean)
+                plt.show()
+
+    def annual_mean_phenology(self,threshold_i=0.2):
+        fdir = join(self.this_class_arr,'every_year_phenology')
+        outdir = join(self.this_class_arr,'annual_mean_phenology')
+        T.mk_dir(outdir,force=True)
+        f = join(fdir,'every_year_phenology.df')
+        df = T.load_df(f)
+        col_list = df.columns.tolist()
+        col_list.remove('pix')
+        result_dic = {}
+        for i,row in tqdm(df.iterrows(),total=len(df)):
+            pix = row['pix']
+            result_dic_i = {}
+            for col in col_list:
+                vals = row[col]
+                vals_mean = np.nanmean(vals)
+                vals_mean = float(vals_mean)
+                vals_mean = int(round(vals_mean,0))
+                result_dic_i[col] = vals_mean
+            result_dic[pix] = result_dic_i
+        df = T.dic_to_df(result_dic,'pix')
+        outf = join(outdir,'annual_mean_phenology.df')
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
+    def check_annual_mean_phenology(self):
+
+        f = join(self.this_class_arr,'annual_mean_phenology','annual_mean_phenology.df')
+        df = T.load_df(f)
+        spatial_dict = T.df_to_spatial_dic(df,'late_end')
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        color_list = ['#007F00', '#FFFCCA', '#793D8A']
+        cmap1 = sns.blend_palette(color_list[::-1], as_cmap=True, )
+        cmap2 = sns.blend_palette(color_list, as_cmap=True, )
+        cmap_dict = {'SOS': cmap2, 'EOS': cmap1, 'GS_length': cmap1}
+        plt.imshow(arr,cmap=cmap_dict['EOS'],vmin=220,vmax=350)
+        plt.colorbar()
+        plt.show()
+
+    def pick_phenology(self,vals,threshold_i):
+        peak = np.argmax(vals)
+        if peak == 0 or peak == (len(vals) - 1):
+            return {}
+        try:
+            early_start = self.__search_left(vals, peak, threshold_i)
+            late_end = self.__search_right(vals, peak, threshold_i)
+        except:
+            early_start = 60
+            late_end = 130
+            print(vals)
+            plt.plot(vals)
+            plt.show()
+        # method 1
+        # early_end, late_start = self.__slope_early_late(vals,early_start,late_end,peak)
+        # method 2
+        early_end, late_start = self.__median_early_late(vals, early_start, late_end, peak)
+
+        early_period = early_end - early_start
+        peak_period = late_start - early_end
+        late_period = late_end - late_start
+        dormant_period = 365 - (late_end - early_start)
+
+        result = {
+            'early_length': early_period,
+            'mid_length': peak_period,
+            'late_length': late_period,
+            'dormant_length': dormant_period,
+            'early_start': early_start,
+            'early_start_mon': self.__day_to_month(early_start),
+
+            'early_end': early_end,
+            'early_end_mon': self.__day_to_month(early_end),
+
+            'peak': peak,
+            'peak_mon': self.__day_to_month(peak),
+
+            'late_start': late_start,
+            'late_start_mon': self.__day_to_month(late_start),
+
+            'late_end': late_end,
+            'late_end_mon': self.__day_to_month(late_end),
+        }
+        return result
+        pass
+
+    def transform_phenology(self):
+        fdir = join(self.this_class_arr,'annual_mean_phenology')
+        outdir = join(self.this_class_arr,'annual_mean_phenology_transform')
+        T.mk_dir(outdir,force=True)
+        outf = join(outdir,'LAI4g_phenology.df')
+        f = join(fdir,'annual_mean_phenology.df')
+        df = T.load_df(f)
+        early_start_dict = T.df_to_spatial_dic(df,'early_start')
+        early_end_dict = T.df_to_spatial_dic(df,'early_end')
+        late_start_dict = T.df_to_spatial_dic(df,'late_start')
+        late_end_dict = T.df_to_spatial_dic(df,'late_end')
+        result_dict = {}
+        for pix in early_end_dict:
+            early_start = early_start_dict[pix]
+            early_end = early_end_dict[pix]
+            late_start = late_start_dict[pix]
+            late_end = late_end_dict[pix]
+            early = list(range(early_start,early_end))
+            peak = list(range(early_end,late_start))
+            late = list(range(late_start,late_end))
+            early_peak = list(range(early_start,late_start))
+            dict_i = {'early':early,'peak':peak,'late':late,'early_peak':early_peak}
+            result_dict[pix] = dict_i
+        df_result = T.dic_to_df(result_dict,'pix')
+        T.save_df(df_result,outf)
+        T.df_to_excel(df_result,outf)
+
+    def __interp__(self, vals):
+
+        # x_new = np.arange(min(inx), max(inx), ((max(inx) - min(inx)) / float(len(inx))) / float(zoom))
+
+        inx = range(len(vals))
+        iny = vals
+        x_new = np.linspace(min(inx), max(inx), 365)
+        func = interpolate.interp1d(inx, iny)
+        y_new = func(x_new)
+
+        return x_new, y_new
+
+    def __search_left(self, vals, maxind, threshold_i):
+        left_vals = vals[:maxind]
+        left_min = np.min(left_vals)
+        max_v = vals[maxind]
+        threshold = (max_v - left_min) * threshold_i + left_min
+
+        ind = 999999
+        for step in range(365):
+            ind = maxind - step
+            if ind >= 365:
+                break
+            val_s = vals[ind]
+            if val_s <= threshold:
+                break
+
+        return ind
+
+    def __search_right(self, vals, maxind, threshold_i):
+        right_vals = vals[maxind:]
+        right_min = np.min(right_vals)
+        max_v = vals[maxind]
+        threshold = (max_v - right_min) * threshold_i + right_min
+
+        ind = 999999
+        for step in range(365):
+            ind = maxind + step
+            if ind >= 365:
+                break
+            val_s = vals[ind]
+            if val_s <= threshold:
+                break
+
+        return ind
+
+    def __median_early_late(self,vals,sos,eos,peak):
+        # 2 使用sos-peak peak-eos中位数作为sos和eos的结束和开始
+
+        median_left = int((peak-sos)/2.)
+        median_right = int((eos - peak)/2)
+        max_ind = median_left + sos
+        min_ind = median_right + peak
+        return max_ind, min_ind
+
+    def __day_to_month(self,doy):
+        base = datetime.datetime(2000,1,1)
+        time_delta = datetime.timedelta(int(doy))
+        date = base + time_delta
+        month = date.month
+        day = date.day
+        if day > 15:
+            month = month + 1
+        if month >= 12:
+            month = 12
+        return month
+
 class Phenology_plot_AMSRU_VOD:
 
     def __init__(self):
@@ -223,6 +495,341 @@ class Phenology_plot_AMSRU_VOD:
         plt.xlabel('DOY')
         plt.ylabel('VOD')
         plt.show()
+
+class Phenology_MODIS:
+
+    def __init__(self):
+        self.this_class_arr = '/Volumes/NVME2T/greening_project_redo/Result/MODIS/arr'
+        T.mkdir(self.this_class_arr,force=True)
+        pass
+
+    def run(self):
+        # self.every_year_phenology()
+        # self.annual_mean_phenology()
+        # self.annual_mean_phenology1()
+        # self.annual_mean_phenology2()
+        # self.transform_annual_mean_phenology()
+        # self.transform_every_year_phenology()
+        # self.check_phenology()
+        # self.transform_phenology()
+        # self.check_annual_mean_phenology()
+        pass
+
+
+    def every_year_phenology(self,threshold_i=0.2):
+        out_dir = join(self.this_class_arr, 'every_year_phenology')
+        T.mkdir(out_dir,force=True)
+        outf = join(out_dir,'every_year_phenology.df')
+        hants_smooth_dir = '/Volumes/NVME2T/greening_project_redo/data/MODIS_LAI/per_pix_hants'
+        result_dic = {}
+        for f in T.listdir(hants_smooth_dir):
+            hants_smooth_f = join(hants_smooth_dir,f)
+            hants_dic = T.load_npy(hants_smooth_f)
+            for pix in tqdm(hants_dic,desc=f):
+                hants_dict_i = hants_dic[pix]
+                every_year_dict = {}
+                for year in hants_dict_i:
+                    vals = hants_dict_i[year]
+                    vals = np.array(vals)
+                    vals[np.isnan(vals)] = 0
+                    result = self.pick_phenology(vals,threshold_i)
+                    # print(year,result)
+                    # exit()
+
+                    for key in result:
+                        if not key in every_year_dict:
+                            every_year_dict[key] = {}
+                        every_year_dict[key][year] = result[key]
+                # print(every_year_dict)
+                # exit()
+                result_dic[pix] = every_year_dict
+        df = T.dic_to_df(result_dic,'pix')
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
+    def annual_mean_phenology2(self,threshold_i=0.2):
+        # use climatology mean to calculate phenology
+        hants_smooth_f = '/Volumes/NVME2T/greening_project_redo/data/LAI4g/new_221109/hants_climatology_mean/hants_climatology_mean.npy'
+        hants_dic = T.load_npy(hants_smooth_f)
+        outdir = join(self.this_class_arr, 'annual_mean_phenology2')
+        T.mkdir(outdir,force=True)
+        result_dic = {}
+        for pix in tqdm(hants_dic):
+            vals = hants_dic[pix]
+            vals = np.array(vals)
+            vals[np.isnan(vals)] = 0
+            result = self.pick_phenology(vals, threshold_i)
+            result_dic[pix] = result
+        df = T.dic_to_df(result_dic, 'pix')
+        outf = join(outdir, 'annual_mean_phenology2.df')
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+        # spatial_dict = T.df_to_spatial_dic(df, 'late_end')
+        # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        # color_list = ['#007F00', '#FFFCCA', '#793D8A']
+        # cmap1 = sns.blend_palette(color_list[::-1], as_cmap=True, )
+        # cmap2 = sns.blend_palette(color_list, as_cmap=True, )
+        # cmap_dict = {'SOS': cmap2, 'EOS': cmap1, 'GS_length': cmap1}
+        # plt.imshow(arr, cmap=cmap_dict['EOS'], vmin=220, vmax=350)
+        # plt.colorbar()
+        # plt.show()
+
+    def annual_mean_phenology1(self,threshold_i=0.2):
+        out_dir = join(self.this_class_arr, 'every_year_phenology')
+        T.mkdir(out_dir,force=True)
+        outf = join(out_dir,'every_year_phenology.df')
+        hants_smooth_dir = '/Volumes/NVME2T/greening_project_redo/data/LAI4g/new_221109/hants'
+        result_dic = {}
+        for f in T.listdir(hants_smooth_dir):
+            hants_smooth_f = join(hants_smooth_dir,f)
+            hants_dic = T.load_npy(hants_smooth_f)
+            for pix in tqdm(hants_dic,desc=f):
+                hants_dict_i = hants_dic[pix]
+                every_year_dict = {}
+                vals_all = []
+                for year in hants_dict_i:
+                    vals = hants_dict_i[year]
+                    vals = np.array(vals)
+                    vals_all.append(vals)
+                vals_all = np.array(vals_all)
+                vals_all_mean = np.nanmean(vals_all,axis=0)
+                plt.plot(vals_all_mean)
+                plt.show()
+
+    def annual_mean_phenology(self):
+        fdir = join(self.this_class_arr,'every_year_phenology')
+        outdir = join(self.this_class_arr,'annual_mean_phenology')
+        T.mk_dir(outdir,force=True)
+        f = join(fdir,'every_year_phenology.df')
+        df = T.load_df(f)
+        col_list = df.columns.tolist()
+        col_list.remove('pix')
+        result_dic = {}
+        for i,row in tqdm(df.iterrows(),total=len(df)):
+            pix = row['pix']
+            result_dic_i = {}
+            for col in col_list:
+                vals = row[col]
+                vals_new = []
+                for y in vals:
+                    vals_new.append(vals[y])
+                vals_mean = np.nanmean(vals_new)
+                vals_mean = float(vals_mean)
+                vals_mean = int(round(vals_mean,0))
+                result_dic_i[col] = vals_mean
+            result_dic[pix] = result_dic_i
+        df = T.dic_to_df(result_dic,'pix')
+        outf = join(outdir,'annual_mean_phenology.df')
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
+
+    def check_annual_mean_phenology(self):
+
+        f = join(self.this_class_arr,'annual_mean_phenology','annual_mean_phenology.df')
+        df = T.load_df(f)
+        spatial_dict = T.df_to_spatial_dic(df,'late_end')
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        color_list = ['#007F00', '#FFFCCA', '#793D8A']
+        cmap1 = sns.blend_palette(color_list[::-1], as_cmap=True, )
+        cmap2 = sns.blend_palette(color_list, as_cmap=True, )
+        cmap_dict = {'SOS': cmap2, 'EOS': cmap1, 'GS_length': cmap1}
+        plt.imshow(arr,cmap=cmap_dict['EOS'],vmin=220,vmax=350)
+        plt.colorbar()
+        plt.show()
+
+    def pick_phenology(self,vals,threshold_i):
+        peak = np.argmax(vals)
+        if peak == 0 or peak == (len(vals) - 1):
+            return {}
+        try:
+            early_start = self.__search_left(vals, peak, threshold_i)
+            late_end = self.__search_right(vals, peak, threshold_i)
+        except:
+            early_start = 60
+            late_end = 130
+            print(vals)
+            plt.plot(vals)
+            plt.show()
+        # method 1
+        # early_end, late_start = self.__slope_early_late(vals,early_start,late_end,peak)
+        # method 2
+        early_end, late_start = self.__median_early_late(vals, early_start, late_end, peak)
+
+        early_period = early_end - early_start
+        peak_period = late_start - early_end
+        late_period = late_end - late_start
+        dormant_period = 365 - (late_end - early_start)
+
+        result = {
+            'early_length': early_period,
+            'mid_length': peak_period,
+            'late_length': late_period,
+            'dormant_length': dormant_period,
+            'early_start': early_start,
+            'early_start_mon': self.__day_to_month(early_start),
+
+            'early_end': early_end,
+            'early_end_mon': self.__day_to_month(early_end),
+
+            'peak': peak,
+            'peak_mon': self.__day_to_month(peak),
+
+            'late_start': late_start,
+            'late_start_mon': self.__day_to_month(late_start),
+
+            'late_end': late_end,
+            'late_end_mon': self.__day_to_month(late_end),
+        }
+        return result
+        pass
+    def transform_annual_mean_phenology(self):
+        fdir = join(self.this_class_arr,'annual_mean_phenology')
+        outdir = join(self.this_class_arr,'annual_mean_phenology_transform')
+        T.mk_dir(outdir,force=True)
+        f = join(fdir,'annual_mean_phenology.df')
+        df = T.load_df(f)
+        col_list = df.columns.tolist()
+        col_list.remove('pix')
+        result_dic = {}
+        for col in col_list:
+            print(col)
+            spatial_dict = {}
+            for i,row in tqdm(df.iterrows(),total=len(df)):
+                pix = row['pix']
+                vals = row[col]
+                spatial_dict[pix] = vals
+            outf = join(outdir,f'{col}.npy')
+            T.save_npy(spatial_dict,outf)
+
+    def transform_every_year_phenology(self):
+        fdir = join(self.this_class_arr,'every_year_phenology')
+        outdir = join(self.this_class_arr,'transform_every_year_phenology')
+        T.mk_dir(outdir,force=True)
+        f = join(fdir,'every_year_phenology.df')
+        df = T.load_df(f)
+        col_list = df.columns.tolist()
+        col_list.remove('pix')
+        result_dic = {}
+        year_list = list(range(2000,2019))
+        for col in col_list:
+            print(col)
+            spatial_dict = {}
+            for i,row in tqdm(df.iterrows(),total=len(df)):
+                pix = row['pix']
+                dict_i = row[col]
+                vals = []
+                for y in year_list:
+                    if not y in dict_i:
+                        vals = []
+                        break
+                    vals.append(dict_i[y])
+                if len(vals) == 0:
+                    continue
+                spatial_dict[pix] = vals
+            outf = join(outdir,f'{col}.npy')
+            T.save_npy(spatial_dict,outf)
+
+    def check_phenology(self):
+        f = '/Volumes/NVME2T/greening_project_redo/Result/MODIS/arr/transform_every_year_phenology/early_start.npy'
+        spatial_dict = T.load_npy(f)
+        for pix in spatial_dict:
+            vals = spatial_dict[pix]
+            print(vals)
+            sleep()
+
+    def transform_phenology(self):
+        fdir = join(self.this_class_arr,'annual_mean_phenology')
+        outdir = join(self.this_class_arr,'annual_mean_phenology_transform')
+        T.mk_dir(outdir,force=True)
+        outf = join(outdir,'LAI4g_phenology.df')
+        f = join(fdir,'annual_mean_phenology.df')
+        df = T.load_df(f)
+        early_start_dict = T.df_to_spatial_dic(df,'early_start')
+        early_end_dict = T.df_to_spatial_dic(df,'early_end')
+        late_start_dict = T.df_to_spatial_dic(df,'late_start')
+        late_end_dict = T.df_to_spatial_dic(df,'late_end')
+        result_dict = {}
+        for pix in early_end_dict:
+            early_start = early_start_dict[pix]
+            early_end = early_end_dict[pix]
+            late_start = late_start_dict[pix]
+            late_end = late_end_dict[pix]
+            early = list(range(early_start,early_end))
+            peak = list(range(early_end,late_start))
+            late = list(range(late_start,late_end))
+            early_peak = list(range(early_start,late_start))
+            dict_i = {'early':early,'peak':peak,'late':late,'early_peak':early_peak}
+            result_dict[pix] = dict_i
+        df_result = T.dic_to_df(result_dict,'pix')
+        T.save_df(df_result,outf)
+        T.df_to_excel(df_result,outf)
+
+    def __interp__(self, vals):
+
+        # x_new = np.arange(min(inx), max(inx), ((max(inx) - min(inx)) / float(len(inx))) / float(zoom))
+
+        inx = range(len(vals))
+        iny = vals
+        x_new = np.linspace(min(inx), max(inx), 365)
+        func = interpolate.interp1d(inx, iny)
+        y_new = func(x_new)
+
+        return x_new, y_new
+
+    def __search_left(self, vals, maxind, threshold_i):
+        left_vals = vals[:maxind]
+        left_min = np.min(left_vals)
+        max_v = vals[maxind]
+        threshold = (max_v - left_min) * threshold_i + left_min
+
+        ind = 999999
+        for step in range(365):
+            ind = maxind - step
+            if ind >= 365:
+                break
+            val_s = vals[ind]
+            if val_s <= threshold:
+                break
+
+        return ind
+
+    def __search_right(self, vals, maxind, threshold_i):
+        right_vals = vals[maxind:]
+        right_min = np.min(right_vals)
+        max_v = vals[maxind]
+        threshold = (max_v - right_min) * threshold_i + right_min
+
+        ind = 999999
+        for step in range(365):
+            ind = maxind + step
+            if ind >= 365:
+                break
+            val_s = vals[ind]
+            if val_s <= threshold:
+                break
+
+        return ind
+
+    def __median_early_late(self,vals,sos,eos,peak):
+        # 2 使用sos-peak peak-eos中位数作为sos和eos的结束和开始
+
+        median_left = int((peak-sos)/2.)
+        median_right = int((eos - peak)/2)
+        max_ind = median_left + sos
+        min_ind = median_right + peak
+        return max_ind, min_ind
+
+    def __day_to_month(self,doy):
+        base = datetime.datetime(2000,1,1)
+        time_delta = datetime.timedelta(int(doy))
+        date = base + time_delta
+        month = date.month
+        day = date.day
+        if day > 15:
+            month = month + 1
+        if month >= 12:
+            month = 12
+        return month
 
 
 class Seasonal_variables:
@@ -569,9 +1176,9 @@ class Trend:
         # self.trend_tif('temp')
         # self.late_Temp_trend_two_periods()
         # self.plot_late_Temp_trend_two_periods_tif()
-        # self.check_wen_data()
+        self.check_wen_data()
         # self.check_era_and_terraclimate()
-        self.check_wen_data_spei()
+        # self.check_wen_data_spei()
         pass
 
     def LAI3g_df(self):
@@ -793,17 +1400,21 @@ class Trend:
 
 
     def check_wen_data(self):
-        fdir = join(temporary_root,'temperature_epl_wen/temperature')
-        outdir = join(temporary_root,'temperature_epl_wen/temperature_trend')
+        # variable = 'PAR'
+        # variable = 'VPD'
+        variable = 'temperature'
+        fdir = join(temporary_root,f'temperature_epl_wen/{variable}')
+        outdir = join(temporary_root,f'temperature_epl_wen/{variable}_trend')
         T.mk_dir(outdir,force=True)
         period_list = ['early','peak','late']
-        year_range_list = [(1982,2000),(2001,2018)]
+        # year_range_list = [(1982,2000),(2001,2018)]
+        year_range_list = [(1982,2018)]
         for year_range in year_range_list:
             print(year_range)
             for period in period_list:
                 outdir_period = join(outdir,period)
                 T.mk_dir(outdir_period,force=True)
-                fpath = join(fdir,f'during_{period}_Temp.npy')
+                fpath = join(fdir,f'during_{period}_{variable}_zscore.npy')
                 dict_i = T.load_npy(fpath)
                 spatial_dict_a = {}
                 spatial_dict_p = {}
@@ -1118,8 +1729,8 @@ class Dataframe_func:
         print('add NDVI mask')
         df = self.add_NDVI_mask(df)
         print('add Aridity Index')
-        df = self.add_AI_to_df(df)
-        df = self.add_Humid_nonhumid(df)
+        # df = self.add_AI_to_df(df)
+        # df = self.add_Humid_nonhumid(df)
         print('add_energy_water_ltd_area')
         df = self.add_energy_water_ltd_area(df)
         df = self.clean_df(df)
@@ -1725,9 +2336,11 @@ class Carryover_AMSRU_VOD_GPP:
 
 def main():
     # Phenology().run()
+    # Phenology_LAI4g().run()
+    Phenology_MODIS().run()
     # Phenology_plot_AMSRU_VOD().run()
     # Seasonal_variables().run()
-    Trend().run()
+    # Trend().run()
     # Time_series().run()
     # Sankey_plot().run()
     # Dataframe_daily().run()
