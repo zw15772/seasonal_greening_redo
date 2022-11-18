@@ -1,8 +1,10 @@
 # coding=utf-8
 import time
 
+import matplotlib.pyplot as plt
 import torch
 import torch.hub
+import tornado.template
 import xycmap
 import PIL.Image as Image
 from __init__ import *
@@ -1136,10 +1138,11 @@ class Partial_corr_per_pix:
         self.year_range_list = [(1982, 2018), ]
 
     def run(self):
-        dff = Dataframe().dff
+        # dff = Dataframe().dff
         # df = T.load_df(dff)
         # self.run_p_corr(df)
-        self.plot_p_corr()
+        # self.plot_p_corr()
+        self.plot_p_corr_new_data()
         pass
 
     def y_variable(self):
@@ -1221,6 +1224,28 @@ class Partial_corr_per_pix:
             outf = join(outdir, f'{x}.tif')
             DIC_and_TIF().pix_dic_to_tif(dict_i, outf)
         pass
+
+    def plot_p_corr_new_data(self):
+        f = '/Users/liyang/Desktop/1117/2000_2018_partial_correlation_late_MODIS_LAI.npy'
+        outdir = '/Users/liyang/Desktop/1117/partial_corr_tif'
+        spatial_dict = T.load_npy(f)
+        keys = {}
+        for pix in spatial_dict:
+            dict_i = spatial_dict[pix]
+            for key in dict_i:
+                if not key in keys:
+                    keys[key] = 1
+        for key in keys:
+            variable = key.replace('2000_2018\\X\\Predictors_late\\','')
+            variable = variable.replace('_MODIS_LAI_zscore','')
+            spatial_dict_i = {}
+            for pix in spatial_dict:
+                dict_i = spatial_dict[pix]
+                if not key in dict_i:
+                    continue
+                val = dict_i[key]
+                spatial_dict_i[pix] = val
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict_i,join(outdir,f'{variable}.tif'))
 
 
 class RF_per_pix:
@@ -1990,7 +2015,7 @@ class Bivariate_plot:
             temp = np.array(temp)
             blend_arr.append(temp)
         blend_arr = np.array(blend_arr)
-        print(np.shape(blend_arr))
+        # print(np.shape(blend_arr))
         # exit()
         # newRasterfn = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/tif/Moving_window_single_correlation/test.tif'
         img = Image.fromarray(blend_arr.astype('uint8'), 'RGBA')
@@ -2004,6 +2029,8 @@ class Bivariate_plot:
         raster.SetProjection(outRasterSRS.ExportToWkt())
         n_plot = (101,101)
         zcmap = self.gen_zcmap(n_plot)
+        # print(zcmap)
+        # exit()
         x_ticks = []
         y_ticks = []
         bin1 = np.linspace(min1, max1, n_plot[0] + 1)
@@ -2056,12 +2083,14 @@ class All_variables_single_corr:
 
     def run(self):
         # self.phenology_df_to_spatial_dict()
-        self.phenology_df_to_spatial_dict_late_end()
+        # self.phenology_df_to_spatial_dict_late_end()
         # self.current_year_corr()
         # self.pre_year_corr()
         # self.current_year_corr_tif()
         # self.pre_year_corr_tif()
         # self.corr_statistic()
+        self.corr_statistic_new_data()
+        # self.corr_statistic_new_data()
         # self.check_old_corr()
         # self.MAT_MAP_matrix()
         pass
@@ -2307,6 +2336,38 @@ class All_variables_single_corr:
                 vals_mean = np.nanmean(vals)
                 mean_list.append(vals_mean)
             plt.barh(variables_list,mean_list)
+            plt.title(f'{ltd}')
+            plt.tight_layout()
+        plt.show()
+
+    def corr_statistic_new_data(self):
+        spatial_dict_all = {}
+        fdir1 = '/Users/liyang/Desktop/1117/trend'
+        for f in T.listdir(fdir1):
+            if not f.endswith('.tif'):
+                continue
+            if '_p.tif' in f:
+                continue
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(join(fdir1,f))
+            var_name = 'current_'+f.split('.')[0]
+            spatial_dict_all[var_name] = spatial_dict
+        df = T.spatial_dics_to_df(spatial_dict_all)
+        df = Main_flow_2.Dataframe_func(df).df
+        limited_area_list = T.get_df_unique_val_list(df,'limited_area')
+        variables_list = []
+        for var_i in spatial_dict_all:
+            variables_list.append(var_i)
+        variables_list.sort()
+        for ltd in limited_area_list:
+            df_ltd = df[df['limited_area']==ltd]
+            plt.figure(figsize=(4, 4))
+            mean_list = []
+            for var_i in variables_list:
+                vals = df_ltd[var_i].tolist()
+                vals_mean = np.nanmean(vals)
+                mean_list.append(vals_mean)
+            variables_list_new = [s.replace('_MODIS_LAI_r','') for s in variables_list]
+            plt.barh(variables_list_new,mean_list)
             plt.title(f'{ltd}')
             plt.tight_layout()
         plt.show()
@@ -2581,6 +2642,167 @@ class All_variables_trend:
             outf = join(outdir,f'{col}.tif')
             DIC_and_TIF().pix_dic_to_tif(spatial_dict,outf)
 
+
+class Test_SOS:
+    def __init__(self):
+        pass
+
+    def run(self):
+        # self.NDVI_LAI_SOS()
+        # self.check_mean_sos1()
+        self.check_mean_sos2()
+        pass
+
+    def NDVI_LAI_SOS(self):
+        # ndvi_ts = list(range(1982, 2016))
+        ndvi_ts = list(range(2000, 2019))
+        lai_ts = list(range(2000, 2019))
+        intersect = list(set(ndvi_ts) & set(lai_ts))
+        intersect = list(intersect)
+        intersect.sort()
+        # print(intersect)
+        # exit()
+        # f_ndvi = '/Users/liyang/Desktop/early_start.npy'
+        # f_ndvi = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/arr/All_variables_single_corr/data/X/early_start.npy'
+        f_ndvi = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/arr/All_variables_single_corr/data/X/late_end.npy'
+        # f_lai = '/Users/liyang/Desktop/MODIS_LAI_pheno/phenology_dataframe.df'
+        # f_ndvi = '/Volumes/NVME2T/greening_project_redo/Result/LAI4g/arr/every_year_phenology/every_year_phenology.df'
+        f_lai = '/Volumes/NVME2T/greening_project_redo/Result/MODIS/arr/every_year_phenology/every_year_phenology.df'
+        ndvi_dict = T.load_npy(f_ndvi)
+        lai_df = T.load_df(f_lai)
+        # lai_dict = T.df_to_spatial_dic(lai_df,'early_start')
+        lai_dict = T.df_to_spatial_dic(lai_df,'late_end')
+        # print(lai_dict)
+        # exit()
+        spatial_dict = {}
+        for pix in tqdm(lai_dict):
+            r,c = pix
+            # print()
+            # if r < 50:
+            #     continue
+            # if not r == 50:
+            #     continue
+            # if not c == 550:
+            #     continue
+            # print(pix)
+            # lai = lai_dict[pix]
+            # print(len(lai))
+            # print(lai)
+            # exit()
+            if not pix in ndvi_dict:
+                continue
+            ndvi = ndvi_dict[pix]
+            # if not len(lai) == len(lai_ts):
+            #     continue
+            if not len(ndvi) == len(ndvi_ts):
+                continue
+            # lai_dict_i = dict(zip(lai_ts, lai))
+            lai_dict_i = lai_dict[pix]
+            ndvi_dict_i = dict(zip(ndvi_ts, ndvi))
+            new_lai = []
+            new_ndvi = []
+            for year in intersect:
+                try:
+                    new_lai.append(lai_dict_i[year])
+                    new_ndvi.append(ndvi_dict_i[year])
+                except:
+                    continue
+            plt.scatter(new_ndvi, new_lai)
+            # plot 1:1 line
+            x = np.linspace(np.min(new_ndvi+new_lai), np.max(new_ndvi+new_lai), 5)
+            y = x
+            plt.plot(x, y, color='red')
+            plt.axis('equal')
+            plt.xlabel('OLD')
+            plt.ylabel('LAI')
+            plt.title(f'pixel {pix}')
+            plt.show()
+            r,p = T.nan_correlation(new_ndvi,new_lai)
+            spatial_dict[pix] = r
+
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        plt.imshow(arr, cmap='jet',vmin=-1,vmax=1)
+        plt.colorbar()
+        plt.show()
+        pass
+
+    def check_mean_sos1(self):
+        # f = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/arr/All_variables_single_corr/data/X/early_start.npy'
+        f = '/Volumes/NVME2T/greening_project_redo/Result/late_lai_ml/arr/All_variables_single_corr/data/X/late_end.npy'
+        spatial_dict = T.load_npy(f)
+        spatial_dict_mean = {}
+        for pix in spatial_dict:
+            vals = spatial_dict[pix]
+            a,b,r,p = T.nan_line_fit(list(range(len(vals))),vals)
+            # mean = np.nanmean(vals)
+            spatial_dict_mean[pix] = a
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_mean)
+        # plt.imshow(arr, cmap='jet',vmin=90,vmax=180)
+        plt.imshow(arr, cmap='jet',vmin=-1,vmax=1)
+        plt.colorbar()
+        plt.show()
+
+        pass
+
+    def check_mean_sos2(self):
+        f = '/Volumes/NVME2T/greening_project_redo/Result/MODIS/arr/every_year_phenology/every_year_phenology.df'
+        df = T.load_df(f)
+        # spatial_dict = T.df_to_spatial_dic(df,'early_start')
+        spatial_dict = T.df_to_spatial_dic(df,'late_end')
+        spatial_dict_mean = {}
+        for pix in spatial_dict:
+            dict_i = spatial_dict[pix]
+            vals = []
+            year_list = []
+            for y in dict_i:
+                year_list.append(y)
+            year_list.sort()
+            for y in year_list:
+                v = dict_i[y]
+                vals.append(v)
+            # print(vals)
+            # exit()
+            mean = np.nanmean(vals)
+            a,b,r,p = T.nan_line_fit(year_list,vals)
+            # spatial_dict_mean[pix] = mean
+            spatial_dict_mean[pix] = a
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_mean)
+        # plt.imshow(arr, cmap='jet',vmin=90,vmax=180)
+        plt.imshow(arr, cmap='jet',vmin=-0.1,vmax=0.1)
+        plt.colorbar()
+        plt.show()
+
+        pass
+
+    def NDVI_SOS_corr_1982_2015(self):
+        ndvi_dir = '/Users/liyang/Desktop/per_pix_clean_anomaly'
+        sos_f = '/Users/liyang/Desktop/early_start.npy'
+        sos_dict = T.load_npy(sos_f)
+        ndvi_dict = T.load_npy_dir(ndvi_dir)
+        late_mon = [9,10,11]
+        spatial_dict = {}
+        for pix in tqdm(sos_dict):
+            if not pix in ndvi_dict:
+                continue
+            sos_list = sos_dict[pix]
+            if len(sos_list)==0:
+                continue
+            ndvi_list = ndvi_dict[pix]
+            annual_ndvi = T.monthly_vals_to_annual_val(ndvi_list,grow_season=late_mon)
+            try:
+                r,p = T.nan_correlation(annual_ndvi,sos_list)
+                spatial_dict[pix] = r
+            except:
+                continue
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        plt.imshow(arr,cmap='jet',vmin=-0.5,vmax=0.5,aspect='auto')
+        plt.colorbar()
+        plt.show()
+
+        pass
+
+
+
 def gen_ocean():
     arr = np.ones((360, 720))
     DIC_and_TIF().arr_to_tif(arr, join('/Volumes/NVME2T/greening_project_redo/conf', 'ocean.tif'))
@@ -2592,13 +2814,14 @@ def main():
     # RF_per_value().run()
     # RF().run()
     # Partial_corr().run()
-    # Partial_corr_per_pix().run()
+    Partial_corr_per_pix().run()
     # RF_per_pix().run()
     # Correlation_per_pix().run()
     # Dataframe_moving_window().run()
     # Moving_window_p_correlation().run()
     # Moving_window_single_correlation().run()
-    Bivariate_plot().run()
+    # Bivariate_plot().run()
+    # Test_SOS().run()
     # Test_wen_data().run()
     # Tipping_point().run()
     # All_variables_single_corr().run()
