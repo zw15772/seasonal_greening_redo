@@ -3,6 +3,7 @@ import time
 
 import matplotlib.pyplot as plt
 import torch
+import torch.cuda
 import torch.hub
 import tornado.template
 import xycmap
@@ -20,6 +21,8 @@ class Dataframe:
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Dataframe',
                                                                                        result_root_this_script)
         self.dff = join(self.this_class_arr, 'data_frame.df')
+        # T.open_path_and_file(self.this_class_arr)
+        # exit()
         pass
 
     def run(self):
@@ -27,10 +30,10 @@ class Dataframe:
 
         df = self.add_variables()
         df = Main_flow_2.Dataframe_func(df).df
-        df = self.add_sos_eos(df)
-        df = self.add_early_peak_lai(df)
-        df = self.add_tipping_point(df)
-        df = self.add_photo_period(df)
+        # df = self.add_sos_eos(df)
+        # df = self.add_early_peak_lai(df)
+        # df = self.add_tipping_point(df)
+        # df = self.add_photo_period(df)
 
         # self.to_wen(df)
 
@@ -100,27 +103,28 @@ class Dataframe:
 
 
     def add_variables(self):
-        fdir = join(data_root,'1982_2018_final_wen')
+        # fdir = join(data_root,'1982_2018_final_wen')
+        fdir = '/Users/liyang/Desktop/1117/Zscore'
         variable_list = []
         for f in T.listdir(fdir):
-            fname = f.split('.')[0]
-            fname = fname.replace('_zscore','')
-            fname = fname.replace('during_','')
-            period = fname.split('_')[0]
-            fname = fname.replace(period+'_','')
-            variable_list.append(fname)
+            variable_list.append(f.split('.')[0])
         variable_list = list(set(variable_list))
         variable_list.sort()
-        period_list = ['early','peak','late']
+        # period_list = ['early','peak','late']
         data_dict = {}
-        for period in period_list:
-            for var_i in variable_list:
-                key = f'{period}_{var_i}'
-                fname = f'during_{period}_{var_i}_zscore.npy'
-                fpath = join(fdir,fname)
-                dict_i = T.load_npy(fpath)
-                col_name = f'{var_i}_{period}'
-                data_dict[col_name] = dict_i
+        # for period in period_list:
+        #     for var_i in variable_list:
+        #         key = f'{period}_{var_i}'
+        #         fname = f'during_{period}_{var_i}_zscore.npy'
+        #         fpath = join(fdir,fname)
+        #         dict_i = T.load_npy(fpath)
+        #         col_name = f'{var_i}_{period}'
+        #         data_dict[col_name] = dict_i
+        for var_i in variable_list:
+            fpath = join(fdir,f'{var_i}.npy')
+            dict_i = T.load_npy(fpath)
+            data_dict[var_i] = dict_i
+
         df = T.spatial_dics_to_df(data_dict)
         return df
 
@@ -342,13 +346,15 @@ class Dataframe_per_value:
     def __init__(self):
         self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('Dataframe_per_value',
                                                                                        result_root_this_script)
-        self.datadir = All_variables_single_corr().datadir
+        # self.datadir = All_variables_single_corr().datadir
+        self.datadir = '/Users/liyang/Desktop/1117/Zscore'
         self.start_year = 2000
 
 
     def run(self):
+        self.dataframe_221118()
         # self.detrend()
-        self.not_detrend()
+        # self.not_detrend()
         pass
 
 
@@ -467,6 +473,63 @@ class Dataframe_per_value:
             T.save_df(df_out, outf)
             T.df_to_excel(df_out, outf)
         pass
+
+    def all_variables(self):
+        fdir = self.datadir
+        variable_list = []
+        for f in T.listdir(fdir):
+            variable_list.append(f.split('.')[0])
+        variable_list = list(set(variable_list))
+        variable_list.sort()
+        return variable_list
+
+    def init_void_dataframe(self):
+        void_spatial_dict = DIC_and_TIF().void_spatial_dic()
+        year_list = list(range(self.start_year, 2019))
+        year_list_all = []
+        pix_list_all = []
+        for pix in void_spatial_dict:
+            for year in year_list:
+                year_list_all.append(year)
+                pix_list_all.append(pix)
+        df = pd.DataFrame()
+        df['year'] = year_list_all
+        df['pix'] = pix_list_all
+        return df,year_list
+
+
+    def dataframe_221118(self): # todo: add this function to lytoos
+        variable_list = self.all_variables()
+        outf = join(self.this_class_arr, 'dataframe.df')
+
+        df,year_list = self.init_void_dataframe()
+        pix_list = T.get_df_unique_val_list(df, 'pix')
+        nan_list = [np.nan] * len(year_list)
+        all_data = {}
+        for var_i in tqdm(variable_list):
+            fpath = join(self.datadir, f'{var_i}.npy')
+            spatial_dict_i = T.load_npy(fpath)
+            all_data[var_i] = spatial_dict_i
+
+        for var_i in variable_list:
+            spatial_dict_i = all_data[var_i]
+            val_list_all = []
+            for pix in tqdm(pix_list,desc=var_i):
+                if not pix in spatial_dict_i:
+                    val_list_all.extend(nan_list)
+                    continue
+                vals = spatial_dict_i[pix]
+                if not len(vals) == len(year_list):
+                    val_list_all.extend(nan_list)
+                    continue
+                for i,v in enumerate(vals):
+                    val_list_all.append(v)
+            df[var_i] = val_list_all
+        df = df.dropna(subset=variable_list,how='all')
+        df = Main_flow_2.Dataframe_func(df).df
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+
 
     def not_detrend(self):
         outdir = join(self.this_class_arr,'not_detrend')
@@ -593,10 +656,12 @@ class RF_per_value:
 
     def run(self):
 
+        # self.run_rf_221118()
         # self.run_RF(is_detrend=True)
         # self.run_RF(is_detrend=False)
         # self.plot_RF_results(is_detrend=True)
-        self.plot_RF_results(is_detrend=False)
+        # self.plot_RF_results(is_detrend=False)
+        self.plot_RF_results_221118()
 
     def run_RF(self,is_detrend=True):
         x_var_list = self.x_variables(is_detrend)
@@ -624,6 +689,61 @@ class RF_per_value:
             result = self.train_classfication_permutation_importance(X,Y,x_var_list,y_var)
             outf = join(outdir,f'{f}')
             T.save_npy(result,outf)
+
+
+    def run_rf_221118(self):
+        outdir = join(self.this_class_arr,'rf_221118')
+        T.mkdir(outdir)
+        dff = join(Dataframe_per_value().this_class_arr,'dataframe.df')
+        df = T.load_df(dff)
+        all_variables = Dataframe_per_value().all_variables()
+        y_var = 'during_late_MODIS_LAI_zscore'
+        x_var_list = [x for x in all_variables if not x == y_var]
+        limited_area_list = T.get_df_unique_val_list(df, 'limited_area')
+        # print(limited_area_list)
+        limited_area_list = ['water-limited','energy-limited']
+        # limited_area_list = ['water-limited']
+        # exit()
+        for ltd in limited_area_list:
+            df_ltd = df[df['limited_area'] == ltd]
+            X = df_ltd[x_var_list]
+            Y = df_ltd[y_var]
+            # T.print_head_n(Y,10)
+            # plt.figure()
+            # DIC_and_TIF().plot_df_spatial_pix(df_ltd,land_tif)
+            # plt.title(f'{ltd}')
+            # plt.show()
+            # plt.title(f'{year_range[0]}-{year_range[1]}_{HI_reclass}')
+            result = self.train_classfication_permutation_importance(X,Y,x_var_list,y_var)
+            outf = join(outdir,f'{ltd}')
+            T.save_npy(result,outf)
+
+
+    def plot_RF_results_221118(self):
+        fdir = join(self.this_class_arr,'rf_221118')
+        outdir = join(self.this_class_png,'rf_221118')
+        x_var_list = Dataframe_per_value().all_variables()
+        y_var = 'during_late_MODIS_LAI_zscore'
+        x_var_list = [x for x in x_var_list if not x == y_var]
+        T.mkdir(outdir)
+        T.open_path_and_file(outdir)
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            result = T.load_npy(fpath)
+            print(fpath)
+            # exit()
+            importances_mean = result['importances_mean']
+            # err = result['importances_std']
+            plt.figure(figsize=(4, 4))
+            plt.barh(x_var_list,importances_mean)
+            plt.title(f)
+            # plt.xlim(0,0.4)
+            plt.tight_layout()
+            outf = join(outdir,f'{f}.pdf')
+            plt.savefig(outf)
+            plt.close()
+        # exit()
+        pass
 
 
     def plot_RF_results(self,is_detrend=True):
@@ -1141,15 +1261,22 @@ class Partial_corr_per_pix:
         # dff = Dataframe().dff
         # df = T.load_df(dff)
         # self.run_p_corr(df)
-        # self.plot_p_corr()
-        self.plot_p_corr_new_data()
+        self.plot_p_corr()
+        # self.plot_p_corr_new_data()
         pass
 
     def y_variable(self):
-        return 'LAI3g_late'
+        # return 'LAI3g_late'
+        return 'during_late_MODIS_LAI_zscore'
         # return 'eos_anomaly'
     def x_variables(self):
-        x_list = ['LAI3g_earlier','Temp_late','SPEI3_peak','SPEI3_late','VPD_late','PAR_late']
+        # x_list = ['LAI3g_earlier','Temp_late','SPEI3_peak','SPEI3_late','VPD_late','PAR_late']
+        x_list = []
+        fdir = '/Users/liyang/Desktop/1117/Zscore'
+        for f in T.listdir(fdir):
+            var_i = f.split('.')[0]
+            x_list.append(var_i)
+        x_list.remove('during_late_MODIS_LAI_zscore')
         return x_list
 
     def run_p_corr(self,df):
@@ -1157,6 +1284,8 @@ class Partial_corr_per_pix:
         y_var = self.y_variable()
         outdir = join(self.this_class_arr,f'p_corr_results_{y_var}')
         T.mkdir(outdir)
+        # T.open_path_and_file(outdir)
+        # exit()
 
         p_corr_result = {}
         p_corr_result_p_value = {}
@@ -1165,6 +1294,8 @@ class Partial_corr_per_pix:
             for x in x_var_list:
                 df_new[x] = row[x]
             df_new[y_var] = row[y_var]
+            # T.print_head_n(df_new,5)
+            # exit()
             try:
                 partial_correlation,partial_correlation_p_value = self.__cal_partial_correlation(df_new,x_var_list,y_var)
                 p_corr_result[row['pix']] = partial_correlation
@@ -2801,7 +2932,63 @@ class Test_SOS:
 
         pass
 
+class Carry_over_analysis:
 
+    def __init__(self):
+
+        pass
+
+    def run(self):
+        # dff = Dataframe().dff
+        # df = T.load_df(dff)
+        # DIC_and_TIF().plot_df_spatial_pix(df,land_tif)
+        # plt.show()
+        corr_dir = '/Users/liyang/Desktop/1117/single_corr'
+        val_dir = '/Users/liyang/Desktop/1117/Zscore'
+        # corr_f = join(corr_dir,'during_early_peak_MODIS_LAI_zscore_MODIS_LAI_r.tif')
+        corr_f = join(corr_dir,'SOS_zscore_MODIS_LAI_r.tif')
+        p_f = join(corr_dir,'during_early_peak_MODIS_LAI_zscore_MODIS_LAI_p.tif')
+        sm_f = join(val_dir,'during_late_CCI_SM_zscore.npy')
+        sos_f = join(val_dir,'SOS_zscore.npy')
+        spatial_dict_r = DIC_and_TIF().spatial_tif_to_dic(corr_f)
+        spatial_dict_p = DIC_and_TIF().spatial_tif_to_dic(p_f)
+        sm_dict = T.load_npy(sm_f)
+        sos_dict = T.load_npy(sos_f)
+
+        sm_dict_0 = []
+        sm_dict_1 = []
+        for pix in spatial_dict_r:
+            r = spatial_dict_r[pix]
+            if not pix in sm_dict:
+                continue
+            if not pix in sos_dict:
+                continue
+            sos = sos_dict[pix]
+            sos = np.array(sos)
+            sos_advanced = sos<0
+            sm_vals = sm_dict[pix]
+            sm_vals = np.array(sm_vals)
+            sm_advanced = sm_vals[sos_advanced]
+            if np.isnan(r):
+                continue
+            if r > 0.1:
+                for sm in sm_advanced:
+                    sm_dict_1.append(sm)
+            elif r < -0.1:
+                for sm in sm_advanced:
+                    sm_dict_0.append(sm)
+            else:
+                continue
+        sm_dict_0 = np.array(sm_dict_0)
+        sm_dict_1 = np.array(sm_dict_1)
+        plt.hist(sm_dict_0,bins=100,range=(-3,3),alpha=0.2,density=True,color='r')
+        # plt.title('sm negative')
+        # plt.figure()
+        plt.hist(sm_dict_1,bins=100,range=(-3,3),alpha=0.2,density=True,color='b')
+        # plt.title('sm positive')
+        plt.show()
+
+        pass
 
 def gen_ocean():
     arr = np.ones((360, 720))
@@ -2814,7 +3001,7 @@ def main():
     # RF_per_value().run()
     # RF().run()
     # Partial_corr().run()
-    Partial_corr_per_pix().run()
+    # Partial_corr_per_pix().run()
     # RF_per_pix().run()
     # Correlation_per_pix().run()
     # Dataframe_moving_window().run()
@@ -2826,6 +3013,7 @@ def main():
     # Tipping_point().run()
     # All_variables_single_corr().run()
     # All_variables_trend().run()
+    Carry_over_analysis().run()
     # gen_ocean()
     pass
 
