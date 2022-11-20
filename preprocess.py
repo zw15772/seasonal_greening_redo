@@ -84,7 +84,7 @@ vars_info_dic = {
 #         '''
 #         pass
 #
-#     def hants_interpolate(self, values_list, dates_list, valid_range): # todo: need to change to 1D values
+#     def hants_interpolate(self, values_list, dates_list, valid_range): #
 #         '''
 #         :param values_list: 2D array of values
 #         :param dates_list:  2D array of dates, datetime objects
@@ -1574,7 +1574,8 @@ class MODIS_LAI:
 
     def run(self):
         # self.per_pix()
-        self.hants()
+        # self.hants()
+        self.hants_format_transform()
         pass
 
     def per_pix(self):
@@ -1622,6 +1623,26 @@ class MODIS_LAI:
 
         pass
 
+    def hants_format_transform(self):
+        fdir = join(self.datadir,'per_pix_hants')
+        outdir = join(self.datadir,'per_pix_hants_format_transform')
+        T.mk_dir(outdir)
+        for f in T.listdir(fdir):
+            print(f)
+            dict_i = T.load_npy(join(fdir,f))
+            year_list = list(range(2000,2019))
+            spatial_dict_i = {}
+            for pix in dict_i:
+                dict_j = dict_i[pix]
+                arrs = []
+                for year in year_list:
+                    vals = dict_j[year]
+                    vals = np.array(vals)
+                    arrs.append(vals)
+                arrs = np.array(arrs)
+                spatial_dict_i[pix] = arrs
+            outf = join(outdir,f)
+            T.save_npy(spatial_dict_i,outf)
 
 class MODIS_LAI_BU_CMG:
 

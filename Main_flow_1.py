@@ -331,7 +331,7 @@ class Phenology:
         # self.hants()
         # self.check_hants()
 
-        # self.annual_phenology(self.product)
+        self.annual_phenology(self.product)
         # self.compose_annual_phenology(self.product)
         # self.pick_daily_phenology()
         # self.pick_month_phenology()
@@ -339,7 +339,7 @@ class Phenology:
         # self.average_phenology(self.product)
         # self.check_SOS_EOS(self.product)
         # self.check_compose_hants()
-        self.check_pixel_phenology(self.product)
+        # self.check_pixel_phenology(self.product)
         # self.all_year_hants_annual()
         # self.all_year_hants_annual_mean()
         # self.all_year_hants()
@@ -3889,7 +3889,7 @@ class Moving_window:
         # exit()
         # self.single_correlation()
         # self.single_correlation_matrix_plot()
-        self.single_correlation_pdf_plot()
+        # self.single_correlation_pdf_plot()
         # self.single_correlation_time_series_plot()
 
         # self.trend()
@@ -3909,7 +3909,7 @@ class Moving_window:
         # self.mean_matrix_plot()
 
         # self.carryover_partial_correlation()
-        # self.pdf_plot('partial_correlation_orign_nodetrend')
+        self.pdf_plot('partial_correlation_orign_nodetrend')
         # self.pdf_plot('partial_correlation_orign_detrend')
         # self.pdf_plot('partial_correlation_anomaly_nodetrend')
         # self.pdf_plot('partial_correlation_anomaly_detrend')
@@ -7610,7 +7610,7 @@ def main():
     # RF().run()
     # Moving_window_RF().run()
     # Analysis().run()
-    # Moving_window().run()
+    Moving_window().run()
     # Global_vars().get_valid_pix_df()
     # Drought_event().run()
     # Partial_corr().run()
@@ -7622,7 +7622,7 @@ def main():
     # Sankey_plot_PLS().run()
     # Moving_window_1().run()
     # multiregression_plot().run()
-    Ternary_plot().run()
+    # Ternary_plot().run()
 
     pass
 

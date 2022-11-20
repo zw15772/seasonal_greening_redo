@@ -38,7 +38,7 @@ class Dataframe:
 
     def run(self):
         df = self.__gen_df_init()
-        # df = self.add_data(df)
+        df = self.add_data(df)
         # df = self.add_lon_lat_to_df(df)
         df = self.add_Humid_nonhumid(df)
         # df = self.add_ly_NDVI(df)
@@ -696,7 +696,7 @@ class Analysis:
 
     def greening_slide_partial_corr_area(self,season,y_variable,humid):
         '''
-        todo: next task
+
         :param season:
         :param y_variable:
         :param humid:

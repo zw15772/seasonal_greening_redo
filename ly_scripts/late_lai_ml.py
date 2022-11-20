@@ -2390,7 +2390,7 @@ class All_variables_single_corr:
                 try:
                     x_val = T.detrend_vals(x_val)
                     y_val = T.detrend_vals(y_val)
-                    r,p = T.nan_correlation(x_val,y_val) # todo: bug
+                    r,p = T.nan_correlation(x_val,y_val)
                 except:
                     print(x_var,len(x_val),len(y_val))
                     continue
@@ -2945,8 +2945,8 @@ class Carry_over_analysis:
         # plt.show()
         corr_dir = '/Users/liyang/Desktop/1117/single_corr'
         val_dir = '/Users/liyang/Desktop/1117/Zscore'
-        # corr_f = join(corr_dir,'during_early_peak_MODIS_LAI_zscore_MODIS_LAI_r.tif')
-        corr_f = join(corr_dir,'SOS_zscore_MODIS_LAI_r.tif')
+        corr_f = join(corr_dir,'during_early_peak_MODIS_LAI_zscore_MODIS_LAI_r.tif')
+        # corr_f = join(corr_dir,'SOS_zscore_MODIS_LAI_r.tif')
         p_f = join(corr_dir,'during_early_peak_MODIS_LAI_zscore_MODIS_LAI_p.tif')
         sm_f = join(val_dir,'during_late_CCI_SM_zscore.npy')
         sos_f = join(val_dir,'SOS_zscore.npy')
