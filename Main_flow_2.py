@@ -1841,7 +1841,7 @@ class Dataframe_func:
         df = T.add_spatial_dic_to_df(df,P_PET_dic_reclass,'HI_reclass')
         df = T.add_spatial_dic_to_df(df, P_PET_dic_reclass, 'HI_class')
         df = df.dropna(subset=['HI_class'])
-        df.loc[df['HI_reclass'] != 'Humid', ['HI_reclass']] = 'Dry'
+        df.loc[df['HI_reclass'] != 'Humid', ['HI_reclass']] = 'Dryland'
         return df
 
     def add_energy_water_ltd_area(self,df):
@@ -2337,7 +2337,7 @@ class Carryover_AMSRU_VOD_GPP:
 def main():
     # Phenology().run()
     # Phenology_LAI4g().run()
-    Phenology_MODIS().run()
+    # Phenology_MODIS().run()
     # Phenology_plot_AMSRU_VOD().run()
     # Seasonal_variables().run()
     # Trend().run()

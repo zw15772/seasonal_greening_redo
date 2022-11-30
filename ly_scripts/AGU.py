@@ -1,5 +1,8 @@
 # coding=utf-8
+import re
 import tarfile
+
+import xymap
 
 import Main_flow_2
 import semopy
@@ -1000,17 +1003,139 @@ class Single_corr:
         plt.show()
 
 
-class Bivarite_plot:
+class Bivarite_plot_partial_corr:
 
     def __init__(self):
-
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir(
+            'Bivarite_plot_partial_corr',
+            result_root_this_script)
         pass
 
     def run(self):
-        self.plot()
+        # self.earlier_and_late_greening_trend()
+        # self.partial_corr_dict_to_tif()
+        # self.partial_corr_window_trend()
+        # self.long_term_corr_dict_to_tif()
+        self.bivarite_plot()
         pass
 
-    def plot(self):
+
+    def partial_corr_dict_to_tif(self):
+        father_outdir = join(self.this_class_tif, 'partial_corr_tif')
+        T.mk_dir(father_outdir, force=True)
+        father_dir = '/Users/liyang/Desktop/detrend_zscore_test_factors/partial_window'
+        moving_window_dir = join(father_dir,'moving_window')
+        long_term_dir = join(father_dir,'long_term')
+        window_list = ['05','10']
+        is_detrend_list = ['detrend','with-trend']
+        scenario_list = ['scenario1','scenario2']
+
+        for detrend in is_detrend_list:
+            for window in window_list:
+                for scenario in scenario_list:
+                    print(f'{detrend}_{window}_{scenario}')
+                    outdir = join(father_outdir, f'{detrend}_{window}_{scenario}')
+                    T.mk_dir(outdir, force=True)
+                    window_dir = join(moving_window_dir,f'{detrend}_{window}_{scenario}')
+                    if not isdir(window_dir):
+                        continue
+                    for f in T.listdir(window_dir):
+                        if f.endswith('_p_value.npy'):
+                            continue
+                        p_list = re.findall(r'zscore_.*?_', f)[0]
+                        w = p_list.split('_')[1]
+                        fpath = join(window_dir,f)
+                        dict_i = T.load_npy(fpath)
+                        variables_list = {}
+                        for pix in dict_i:
+                            dict_j = dict_i[pix]
+                            for var_i in dict_j:
+                                if not var_i in variables_list:
+                                    variables_list[var_i] = 1
+                                else:
+                                    continue
+                        # print(variables_list)
+                        for var_i in variables_list:
+                            outdir_i = join(outdir,var_i)
+                            T.mk_dir(outdir_i,force=True)
+                            outf = join(outdir_i,f'{w}.tif')
+                            spatial_dict = {}
+                            for pix in dict_i:
+                                dict_j = dict_i[pix]
+                                if not var_i in dict_j:
+                                    continue
+                                val = dict_j[var_i]
+                                spatial_dict[pix] = val
+                            DIC_and_TIF().pix_dic_to_tif(spatial_dict,outf)
+
+    def partial_corr_window_trend(self):
+        father_fdir = join(self.this_class_tif,'partial_corr_tif')
+        father_outdir = join(self.this_class_tif,'partial_corr_trend')
+        T.mk_dir(father_outdir,force=True)
+        for folder in T.listdir(father_fdir):
+            fdir = join(father_fdir,folder)
+            outdir = join(father_outdir,folder)
+            for var_i in T.listdir(fdir):
+                var_i_dir = join(fdir,var_i)
+                print(f'{folder}-{var_i}')
+                T.mk_dir(outdir,force=True)
+                outf = join(outdir,f'{var_i}.tif')
+                void_spatial_dict = DIC_and_TIF().void_spatial_dic()
+                for f in T.listdir(var_i_dir):
+                    w = f.split('.')[0]
+                    fpath = join(var_i_dir,f)
+                    spatial_dict = DIC_and_TIF().spatial_tif_to_dic(fpath)
+                    for pix in spatial_dict:
+                        val = spatial_dict[pix]
+                        void_spatial_dict[pix].append(val)
+                trend_spatial_dict = {}
+                for pix in void_spatial_dict:
+                    vals = void_spatial_dict[pix]
+                    vals = np.array(vals)
+                    vals[vals<-9999] = np.nan
+                    if T.is_all_nan(vals):
+                        continue
+                    a,b,r,p = T.nan_line_fit(list(range(len(vals))),vals)
+                    trend_spatial_dict[pix] = a
+                DIC_and_TIF().pix_dic_to_tif(trend_spatial_dict,outf)
+
+    def long_term_corr_dict_to_tif(self):
+        father_dir = '/Users/liyang/Desktop/detrend_zscore_test_factors/partial_window/long_term'
+        father_outdir = join(self.this_class_tif,'long_term_corr_tif')
+        T.mk_dir(father_outdir,force=True)
+        for folder in T.listdir(father_dir):
+            fdir = join(father_dir,folder)
+            outdir = join(father_outdir,folder)
+            T.mk_dir(outdir,force=True)
+            for f in T.listdir(fdir):
+                fpath = join(fdir,f)
+                if 'p_value' in f:
+                    continue
+                dict_i = T.load_npy(fpath)
+                variables_list = {}
+                for pix in dict_i:
+                    dict_j = dict_i[pix]
+                    for var_i in dict_j:
+                        if not var_i in variables_list:
+                            variables_list[var_i] = 1
+                        else:
+                            continue
+                variables_list = list(variables_list.keys())
+                # variables_list = [i.split('\\')[-1] for i in variables_list]
+                for var_i in variables_list:
+                    var_i_out = var_i.split('\\')[-1]
+                    outf = join(outdir, var_i_out + '.tif')
+                    spatial_dict = {}
+                    for pix in dict_i:
+                        dict_j = dict_i[pix]
+                        if not var_i in dict_j:
+                            continue
+                        val = dict_j[var_i]
+                        spatial_dict[pix] = val
+                    DIC_and_TIF().pix_dic_to_tif(spatial_dict, outf)
+
+
+    def earlier_and_late_greening_trend(self):
         dff = Dataframe().dff
         df = T.load_df(dff)
         T.print_head_n(df, 5)
@@ -1049,6 +1174,42 @@ class Bivarite_plot:
         plt.imshow(arr,cmap='jet')
         plt.colorbar()
         plt.show()
+
+    def bivarite_plot(self):
+        fdir_moving_window = join(self.this_class_tif,'partial_corr_trend')
+        fdir_long_term = join(self.this_class_tif,'long_term_corr_tif')
+        outdir = join(self.this_class_tif,'bivarite_plot')
+        T.mk_dir(outdir,force=True)
+
+        long_term_path_dict = {}
+        for folder in T.listdir(fdir_long_term):
+            folder_path = join(fdir_long_term,folder)
+            for f in T.listdir(folder_path):
+                var_i = f.split('.')[0]
+                fpath = join(folder_path,f)
+                long_term_path_dict[var_i] = fpath
+        for folder in T.listdir(fdir_moving_window):
+            folder_path = join(fdir_moving_window,folder)
+            outdir_i = join(outdir,folder)
+            T.mk_dir(outdir_i,force=True)
+            for f in T.listdir(folder_path):
+                fpath = join(folder_path,f)
+                var_i = f.split('.')[0]
+                if not var_i in long_term_path_dict:
+                    continue
+                long_term_path = long_term_path_dict[var_i]
+                # tif1, tif2, x_label, y_label, min1, max1, min2, max2, outf
+                tif1 = fpath
+                tif2 = long_term_path
+                x_label = 'moving_window_trend'
+                y_label = 'long_term_trend'
+                min1 = -0.01
+                max1 = 0.01
+                min2 = -0.3
+                max2 = 0.3
+                outf = join(outdir_i,var_i+'.tif')
+                xymap.Bivariate_plot().plot_bivariate_map(tif1, tif2, x_label, y_label, min1, max1, min2, max2, outf)
+
 
 
 class Scatter_plot:
@@ -1378,8 +1539,8 @@ def main():
     # SEM().run()
     # Dataframe_moving_window().run()
     # Moving_window_single_correlation().run()
-    Single_corr().run()
-    # Bivarite_plot().run()
+    # Single_corr().run()
+    Bivarite_plot_partial_corr().run()
     # Scatter_plot().run()
     # RF_per_value().run()
     pass
