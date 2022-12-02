@@ -1651,7 +1651,9 @@ class CarryoverInDryYear:
     def run(self):
 
         # self.matrix()
-        self.bivariate_plot_earlier_and_late()
+        # self.bivariate_plot_earlier_and_late()
+        # self.bivariate_plot_earlier_and_late_classification()
+        self.bivariate_plot_earlier_and_late_classification_from_tif()
 
     def matrix(self):
         dff = Dataframe_per_value().dff
@@ -1713,8 +1715,6 @@ class CarryoverInDryYear:
         late_max = 0.2
         xymap.Bivariate_plot().plot_bivariate_map(earlier_tif,late_tif,earlier_var,late_var,earlier_min,earlier_max,late_min,late_max,outf)
 
-
-
     def __calculate_trend_tif(self,df,var_i,outdir):
         outf = join(outdir,f'{var_i}.tif')
         if isfile(outf):
@@ -1732,6 +1732,142 @@ class CarryoverInDryYear:
         DIC_and_TIF().pix_dic_to_tif(spatial_dict_trend,outf)
         return outf
 
+    def bivariate_plot_earlier_and_late_classification(self):
+        outtifdir = join(self.this_class_tif,'bivariate_plot_earlier_and_late_classification')
+        outf = join(outtifdir,'classification.tif')
+        T.mk_dir(outtifdir)
+        dff = Dataframe().dff
+        df = T.load_df(dff)
+        # T.print_head_n(df)
+        earlier_var = 'during_early_peak_MODIS_LAI_zscore'
+        late_var = 'during_late_MODIS_LAI_zscore'
+        df = self.__calculate_trend_to_df(df,earlier_var)
+        df = self.__calculate_trend_to_df(df,late_var)
+        # compose trend mark
+        trend_mark_compose = []
+        for i,row in df.iterrows():
+            earlier_trend = row[f'{earlier_var}_trend']
+            late_trend = row[f'{late_var}_trend']
+            if np.isnan(earlier_trend) or np.isnan(late_trend):
+                trend_mark_compose.append(np.nan)
+                continue
+            earlier_trend = int(earlier_trend)
+            late_trend = int(late_trend)
+            earlier_trend = str(earlier_trend)
+            late_trend = str(late_trend)
+            trend_mark = earlier_trend + '-' + late_trend
+            trend_mark_compose.append(trend_mark)
+        df['trend_mark'] = trend_mark_compose
+        trend_mark_unique = T.get_df_unique_val_list(df,'trend_mark')
+        trend_mark_dict = {key:j for j,key in enumerate(trend_mark_unique)}
+        trend_mark_compose_value = []
+        for i, row in df.iterrows():
+            trend_mark = row['trend_mark']
+            if type(trend_mark) == float:
+                trend_mark_compose_value.append(np.nan)
+                continue
+            trend_mark_value = trend_mark_dict[trend_mark]
+            trend_mark_compose_value.append(trend_mark_value)
+        df['trend_mark_value'] = trend_mark_compose_value
+        print(trend_mark_dict)
+        spatial_dict = T.df_to_spatial_dic(df,'trend_mark_value')
+        DIC_and_TIF().pix_dic_to_tif(spatial_dict,outf)
+
+    def __calculate_trend_to_df(self,df,var_i):
+        spatial_dict = T.df_to_spatial_dic(df,var_i)
+        trend_mark_list = []
+        for pix in tqdm(spatial_dict):
+            vals = spatial_dict[pix]
+            if type(vals) == float:
+                trend_mark_list.append(np.nan)
+                continue
+            if T.is_all_nan(vals):
+                trend_mark_list.append(np.nan)
+                continue
+            a,b,r,p = T.nan_line_fit(list(range(len(vals))),vals)
+            if p > 0.1:
+                trend_mark = 0
+            else:
+                if a > 0:
+                    trend_mark = 1
+                else:
+                    trend_mark = -1
+            trend_mark_list.append(trend_mark)
+        df[f'{var_i}_trend'] = trend_mark_list
+        return df
+
+    def bivariate_plot_earlier_and_late_classification_from_tif(self):
+        fdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/Figure1'
+        outtifdir = join(self.this_class_tif,'bivariate_plot_earlier_and_late_classification_from_tif')
+        T.mk_dir(outtifdir)
+        all_data_dict = {}
+        for f in T.listdir(fdir):
+            # print(f)
+            if not f.endswith('.tif'):
+                continue
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(join(fdir,f))
+            var_name = f.split('.')[0]
+            all_data_dict[var_name] = spatial_dict
+        df = T.spatial_dics_to_df(all_data_dict)
+        cols = list(df.columns)
+        # for c in cols:
+        #     print(c)
+        var_list = ['Trendy_ensemble','MODIS_LAI']
+        period_list = ['during_early_peak','during_late']
+        for var_i in var_list:
+            outf = join(outtifdir, f'{var_i}.tif')
+            earlier_trend_var = f'{period_list[0]}_{var_i}_trend'
+            earlier_p_var = f'{period_list[0]}_{var_i}_p_value'
+            late_trend_var = f'{period_list[1]}_{var_i}_trend'
+            late_p_var = f'{period_list[1]}_{var_i}_p_value'
+            df = self.__add_trend_to_df(df,earlier_trend_var,earlier_p_var)
+            df = self.__add_trend_to_df(df,late_trend_var,late_p_var)
+            # compose trend mark
+            trend_mark_compose = []
+            for i, row in df.iterrows():
+                earlier_trend = row[f'{earlier_trend_var}_mark']
+                late_trend = row[f'{late_trend_var}_mark']
+                if np.isnan(earlier_trend) or np.isnan(late_trend):
+                    trend_mark_compose.append(np.nan)
+                    continue
+                earlier_trend = int(earlier_trend)
+                late_trend = int(late_trend)
+                earlier_trend = str(earlier_trend)
+                late_trend = str(late_trend)
+                trend_mark = earlier_trend + '-' + late_trend
+                trend_mark_compose.append(trend_mark)
+            df['trend_mark'] = trend_mark_compose
+            trend_mark_unique = T.get_df_unique_val_list(df, 'trend_mark')
+            trend_mark_dict = {'-1--1': 0, '-1-0': 1, '-1-1': 2, '0--1': 3, '0-0': 4, '0-1': 5, '1--1': 6, '1-0': 7, '1-1': 8}
+            trend_mark_compose_value = []
+            for i, row in df.iterrows():
+                trend_mark = row['trend_mark']
+                if type(trend_mark) == float:
+                    trend_mark_compose_value.append(np.nan)
+                    continue
+                trend_mark_value = trend_mark_dict[trend_mark]
+                trend_mark_compose_value.append(trend_mark_value)
+            df['trend_mark_value'] = trend_mark_compose_value
+            print(trend_mark_dict)
+            spatial_dict = T.df_to_spatial_dic(df, 'trend_mark_value')
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict, outf)
+
+
+    def __add_trend_to_df(self,df,a_var,p_var):
+        trend_mark_list = []
+        for i,row in df.iterrows():
+            a = row[a_var]
+            p = row[p_var]
+            if p > 0.1:
+                trend_mark = 0
+            else:
+                if a > 0:
+                    trend_mark = 1
+                else:
+                    trend_mark = -1
+            trend_mark_list.append(trend_mark)
+        df[f'{a_var}_mark'] = trend_mark_list
+        return df
 
 def main():
     # Earlier_positive_anomaly().run()
