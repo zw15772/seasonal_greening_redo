@@ -2,6 +2,7 @@
 import re
 import tarfile
 
+import matplotlib.pyplot as plt
 import xymap
 
 import Main_flow_2
@@ -80,12 +81,12 @@ class Dataframe:
         # self.datadir = Earlier_positive_anomaly().datadir
         # self.datadir = '/Users/liyang/Desktop/detrend_zscore_test_factors/data_for_SEM_with_trend/data_moving_window'
         self.datadir = '/Users/liyang/Desktop/detrend_zscore_test_factors/data_for_SEM_detrend/data_moving_window'
-        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir(
-            'Dataframe_detrend',
-            result_root_this_script)
         # self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir(
-        #     'Dataframe_with_trend',
+        #     'Dataframe_detrend',
         #     result_root_this_script)
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir(
+            'Dataframe_with_trend',
+            result_root_this_script)
         T.mkdir(self.this_class_arr)
         self.dff = join(self.this_class_arr, 'Dataframe.df')
 
@@ -159,7 +160,7 @@ class Dataframe_per_value:
         # variable_list =
         df = self.__gen_df_init()
         df = self.add_variables(df)
-        df = lytools.Dataframe_per_value(df,variable_list,start_year,end_year).df
+        df = Dataframe_per_value_transform(df,variable_list,start_year,end_year).df
         df = Main_flow_2.Dataframe_func(df).df
         df = self.add_tif(df)
 
@@ -1012,7 +1013,8 @@ class Bivarite_plot_partial_corr:
         pass
 
     def run(self):
-        # self.earlier_and_late_greening_trend()
+        # self.earlier_and_late_greening_trend_binary()
+        # self.earlier_and_late_greening_trend_binary_with_p()
         # self.partial_corr_dict_to_tif()
         # self.partial_corr_window_trend()
         # self.long_term_corr_dict_to_tif()
@@ -1135,7 +1137,7 @@ class Bivarite_plot_partial_corr:
                     DIC_and_TIF().pix_dic_to_tif(spatial_dict, outf)
 
 
-    def earlier_and_late_greening_trend(self):
+    def earlier_and_late_greening_trend_binary(self):
         dff = Dataframe().dff
         df = T.load_df(dff)
         T.print_head_n(df, 5)
@@ -1174,6 +1176,7 @@ class Bivarite_plot_partial_corr:
         plt.imshow(arr,cmap='jet')
         plt.colorbar()
         plt.show()
+
 
     def bivarite_plot(self):
         fdir_moving_window = join(self.this_class_tif,'partial_corr_trend')
@@ -1219,14 +1222,23 @@ class Scatter_plot:
         pass
 
     def run(self):
+        self.matrix_plot()
+        # self.earlier_and_late_greening_trend_binary_with_p()
+
+        pass
+
+    def matrix_plot(self):
         dff = Dataframe_per_value().dff
         df = T.load_df(dff)
+        # df = self.filter_df_with_trend_p(df)
+        df = self.filter_df_with_gs_SPEI3(df)
         cols = df.columns
         for c in cols:
             print(c)
         limited_area = 'water-limited'
         # limited_area = 'energy-limited'
         df = df[df['limited_area']==limited_area]
+        # limited_area = 'All'
         print(len(df))
         # during_early_peak_CCI_SM_zscore
         # during_late_CCI_SM_zscore
@@ -1244,16 +1256,22 @@ class Scatter_plot:
         # early_sm_var = 'detrend_during_early_peak_SPEI3'
         late_lai_var = 'during_late_MODIS_LAI_zscore'
         early_lai_var = 'during_early_peak_MODIS_LAI_zscore'
+        df = df.dropna(subset=[early_sm_var,late_lai_var])
 
         early_sm = df[early_sm_var].values.tolist()
         late_lai = df[late_lai_var].values.tolist()
         earlier_lai = df[early_lai_var].values.tolist()
-        max_bin = 0
+
+        max_bin = 2
         min_bin = -2
         n = 7
         percentile_list = np.linspace(0,1,n)
         early_sm = T.remove_np_nan(early_sm)
         late_lai = T.remove_np_nan(late_lai)
+        # plt.hist(early_sm,bins=80)
+        # plt.figure()
+        # plt.hist(late_lai,bins=80)
+        # plt.show()
         earlier_lai = T.remove_np_nan(earlier_lai)
         earlier_lai = np.array(earlier_lai)
         earlier_lai = earlier_lai[earlier_lai>0]
@@ -1292,6 +1310,98 @@ class Scatter_plot:
         plt.tight_layout()
         plt.show()
 
+    def earlier_and_late_greening_trend_binary_with_p(self):
+        dff = Dataframe().dff
+        df = T.load_df(dff)
+        T.print_head_n(df, 5)
+        # exit()
+        earlier = 'during_early_peak_MODIS_LAI_zscore'
+        late = 'during_late_MODIS_LAI_zscore'
+        spatial_dict = {}
+        val_dict = {
+            '1-1':2,
+            '1-0':1,
+            '0-1':-1,
+            '0-0':-2,
+        }
+        mode_list = []
+        for i,row in tqdm(df.iterrows(),total=len(df)):
+            pix = row['pix']
+            x = row[earlier]
+            y = row[late]
+            if type(x) == float:
+                continue
+            if type(y) == float:
+                continue
+            trend_x,_,_,p_x = T.nan_line_fit(list(range(len(x))),x)
+            trend_y,_,_,p_y = T.nan_line_fit(list(range(len(y))),y)
+            r,p = stats.pearsonr(list(range(len(x))),x)
+            if p_x > 0.1:
+                continue
+            # if p_y > 0.1:
+            #     continue
+            if trend_x > 0 and trend_y > 0:
+                val = '1-1'
+            elif trend_x > 0 and trend_y < 0:
+                val = '1-0'
+            elif trend_x < 0 and trend_y > 0:
+                val = '0-1'
+            elif trend_x < 0 and trend_y < 0:
+                val = '0-0'
+            else:
+                continue
+            val_ = val_dict[val]
+            spatial_dict[pix] = val_
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        DIC_and_TIF().plot_back_ground_arr_north_sphere(land_tif)
+        plt.imshow(arr,cmap='jet',aspect='auto')
+        plt.colorbar()
+        plt.show()
+
+    def filter_df_with_trend_p(self,df_in):
+        dff = Dataframe().dff
+        df = T.load_df(dff)
+        earlier = 'during_early_peak_MODIS_LAI_zscore'
+        late = 'during_late_MODIS_LAI_zscore'
+        p_list = []
+        trend_list = []
+        for i,row in tqdm(df.iterrows(),total=len(df)):
+            pix = row['pix']
+            x = row[earlier]
+            y = row[late]
+            if type(x) == float:
+                p_list.append(np.nan)
+                trend_list.append(np.nan)
+                continue
+            if type(y) == float:
+                p_list.append(np.nan)
+                trend_list.append(np.nan)
+                continue
+            trend_x,_,_,p_x = T.nan_line_fit(list(range(len(x))),x)
+            trend_y,_,_,p_y = T.nan_line_fit(list(range(len(y))),y)
+            p_list.append(p_y)
+            trend_list.append(trend_y)
+        p_list = np.array(p_list)
+        trend_list = np.array(trend_list)
+        df['p'] = p_list
+        df['trend'] = trend_list
+        # df = df[df['p']<0.1]
+        # df = df[df['trend']<0]
+        df = df[df['trend']>0]
+        spatial_dict_p = T.df_to_spatial_dic(df,'p')
+        spatial_dict_trend = T.df_to_spatial_dic(df,'trend')
+        df_out = T.add_spatial_dic_to_df(df_in,spatial_dict_trend,'p')
+        df_out = T.add_spatial_dic_to_df(df_in,spatial_dict_trend,'trend')
+        df_out = df_out.dropna(subset=['p','trend'])
+        # DIC_and_TIF().plot_df_spatial_pix(df_out,land_tif)
+        # plt.show()
+        return df_out
+
+    def filter_df_with_gs_SPEI3(self,df_in):
+        spei_var = 'during_early_peak_late_SPEI3_zscore'
+        # df_in = df_in[df_in[spei_var]<0]
+        df_in = df_in[df_in[spei_var]>0]
+        return df_in
 
 class RF_per_value:
 
@@ -1532,6 +1642,97 @@ class RF_per_value:
 
 
 
+class CarryoverInDryYear:
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('CarryoverInDryYear',
+                                                                                       result_root_this_script)
+        pass
+
+    def run(self):
+
+        # self.matrix()
+        self.bivariate_plot_earlier_and_late()
+
+    def matrix(self):
+        dff = Dataframe_per_value().dff
+        df = T.load_df(dff)
+        # T.print_head_n(df)
+        cols = df.columns
+        # for c in cols:
+        #     print(c)
+        gs_spei_var = 'during_early_peak_late_SPEI3_zscore' # condition1 GS water
+        earlier_green_var = 'during_early_peak_MODIS_LAI_zscore' # condition2 earlier Greenness
+        lai_var = 'during_late_MODIS_LAI_zscore'
+        # lai_var = 'during_early_peak_MODIS_LAI_zscore'
+        # sceanrio1: Humid and Green
+        # df = df[df[gs_spei_var] > 0]
+        # df = df[df[earlier_green_var] > 0]
+        # sceanrio_name = 'Humid and Green'
+
+        # scenario2: Humid and Brown
+        # df = df[df[gs_spei_var] > 0]
+        # df = df[df[earlier_green_var] < 0]
+        # sceanrio_name = 'Humid and Brown'
+
+        # scenario3: Dry and Green
+        # df = df[df[gs_spei_var] < 0]
+        # df = df[df[earlier_green_var] > 0]
+        # sceanrio_name = 'Dry and Green'
+
+        # scenario4: Dry and Brown
+        df = df[df[gs_spei_var] < 0]
+        df = df[df[earlier_green_var] < 0]
+        sceanrio_name = 'Dry and Brown'
+
+        df_group = df.groupby(by=['pix'])
+        spatial_dict = {}
+        for pix,df_i in tqdm(df_group):
+            vals = df_i[lai_var].values
+            mean = np.nanmean(vals)
+            spatial_dict[pix] = mean
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        plt.imshow(arr,vmin=-0.5,vmax=0.5,cmap='RdBu')
+        plt.colorbar()
+        plt.title(f'{sceanrio_name}')
+        plt.show()
+
+    def bivariate_plot_earlier_and_late(self):
+        outtifdir = join(self.this_class_tif,'bivariate_plot_earlier_and_late')
+        outf = join(outtifdir,'bivariate_plot_earlier_and_late.tif')
+        T.mk_dir(outtifdir)
+        dff = Dataframe().dff
+        df = T.load_df(dff)
+        T.print_head_n(df)
+        earlier_var = 'during_early_peak_MODIS_LAI_zscore'
+        late_var = 'during_late_MODIS_LAI_zscore'
+        earlier_tif = self.__calculate_trend_tif(df,earlier_var,outtifdir)
+        late_tif = self.__calculate_trend_tif(df,late_var,outtifdir)
+        earlier_min = -0.2
+        earlier_max = 0.2
+        late_min = -0.2
+        late_max = 0.2
+        xymap.Bivariate_plot().plot_bivariate_map(earlier_tif,late_tif,earlier_var,late_var,earlier_min,earlier_max,late_min,late_max,outf)
+
+
+
+    def __calculate_trend_tif(self,df,var_i,outdir):
+        outf = join(outdir,f'{var_i}.tif')
+        if isfile(outf):
+            return outf
+        spatial_dict = T.df_to_spatial_dic(df,var_i)
+        spatial_dict_trend = {}
+        for pix in spatial_dict:
+            vals = spatial_dict[pix]
+            if type(vals) == float:
+                continue
+            if T.is_all_nan(vals):
+                continue
+            a,b,r,p = T.nan_line_fit(list(range(len(vals))),vals)
+            spatial_dict_trend[pix] = a
+        DIC_and_TIF().pix_dic_to_tif(spatial_dict_trend,outf)
+        return outf
+
+
 def main():
     # Earlier_positive_anomaly().run()
     # Dataframe().run()
@@ -1540,9 +1741,10 @@ def main():
     # Dataframe_moving_window().run()
     # Moving_window_single_correlation().run()
     # Single_corr().run()
-    Bivarite_plot_partial_corr().run()
+    # Bivarite_plot_partial_corr().run()
     # Scatter_plot().run()
     # RF_per_value().run()
+    CarryoverInDryYear().run()
     pass
 
 
