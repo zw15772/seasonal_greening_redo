@@ -4,7 +4,8 @@ import tarfile
 
 import matplotlib.pyplot as plt
 import xymap
-
+import xycmap
+import pymannkendall as mk
 import Main_flow_2
 import semopy
 import lytools
@@ -548,7 +549,7 @@ class Moving_window_single_correlation:
         # self.plot_corr()
         # self.moving_window_trend()
         # self.over_all_corr()
-        self.plot_bivariate_map()
+        # self.plot_bivariate_map()
         pass
 
     def run_corr(self):
@@ -1017,7 +1018,7 @@ class Bivarite_plot_partial_corr:
         # self.earlier_and_late_greening_trend_binary_with_p()
         # self.partial_corr_dict_to_tif()
         # self.partial_corr_window_trend()
-        # self.long_term_corr_dict_to_tif()
+        self.long_term_corr_dict_to_tif()
         self.bivarite_plot()
         pass
 
@@ -1231,12 +1232,15 @@ class Scatter_plot:
         dff = Dataframe_per_value().dff
         df = T.load_df(dff)
         # df = self.filter_df_with_trend_p(df)
-        df = self.filter_df_with_gs_SPEI3(df)
+        # df = self.filter_df_with_gs_SPEI3(df)
+        # mode = '1'
+        mode = '2'
+        df = self.filter_df_with_trend_class(df,mode=mode)
         cols = df.columns
         for c in cols:
             print(c)
-        limited_area = 'water-limited'
-        # limited_area = 'energy-limited'
+        # limited_area = 'water-limited'
+        limited_area = 'energy-limited'
         df = df[df['limited_area']==limited_area]
         # limited_area = 'All'
         print(len(df))
@@ -1306,7 +1310,7 @@ class Scatter_plot:
         plt.xlabel(early_lai_var)
         plt.ylabel(early_sm_var)
         plt.colorbar()
-        plt.title(limited_area)
+        plt.title(f'{limited_area} {mode}')
         plt.tight_layout()
         plt.show()
 
@@ -1399,9 +1403,26 @@ class Scatter_plot:
 
     def filter_df_with_gs_SPEI3(self,df_in):
         spei_var = 'during_early_peak_late_SPEI3_zscore'
-        # df_in = df_in[df_in[spei_var]<0]
-        df_in = df_in[df_in[spei_var]>0]
+        df_in = df_in[df_in[spei_var]<0]
+        # df_in = df_in[df_in[spei_var]>0]
         return df_in
+
+    def filter_df_with_trend_class(self,df_in,mode='2'):
+
+        tif = '/Users/liyang/Desktop/detrend_zscore_test_factors/results/tif/CarryoverInDryYear/bivariate_plot_earlier_and_late_classification_from_tif/MODIS_LAI.tif'
+        spatial_dict = DIC_and_TIF().spatial_tif_to_dic(tif)
+        df_in = T.add_spatial_dic_to_df(df_in,spatial_dict,'trend_class')
+        df_in = df_in.dropna(subset=['trend_class'])
+        trend_mark_dict = {'-1--1': 0, '-1-0': 1, '-1-1': 2, '0--1': 3, '0-0': 4, '0-1': 5, '1--1': 6, '1-0': 7,
+                           '1-1': 8}
+        if mode == '1':
+            df_in = df_in[df_in['trend_class'] == 8]
+            return df_in
+        if mode == '2':
+            df_in1 = df_in[df_in['trend_class'] == 7]
+            df_in2 = df_in[df_in['trend_class'] == 6]
+            df_in = pd.concat([df_in1,df_in2])
+            return df_in
 
 class RF_per_value:
 
@@ -1653,7 +1674,14 @@ class CarryoverInDryYear:
         # self.matrix()
         # self.bivariate_plot_earlier_and_late()
         # self.bivariate_plot_earlier_and_late_classification()
-        self.bivariate_plot_earlier_and_late_classification_from_tif()
+        # self.bivariate_plot_earlier_and_late_classification_from_tif()
+        # self.statistic_bivariate_plot_earlier_and_late_classification_from_tif()
+        # self.long_term_trend()
+        # self.bivariate_plot_earlier_and_late_strong_weak_classification()
+        # self.bivariate_plot_strong_weak()
+        # self.flatten_plot_strong_weak()
+        # self.statistic_flatten_plot_strong_weak()
+        self.time_sereis()
 
     def matrix(self):
         dff = Dataframe_per_value().dff
@@ -1812,7 +1840,7 @@ class CarryoverInDryYear:
         cols = list(df.columns)
         # for c in cols:
         #     print(c)
-        var_list = ['Trendy_ensemble','MODIS_LAI']
+        var_list = ['Trendy_ensemble','MODIS_LAI','LAI3g']
         period_list = ['during_early_peak','during_late']
         for var_i in var_list:
             outf = join(outtifdir, f'{var_i}.tif')
@@ -1868,6 +1896,304 @@ class CarryoverInDryYear:
             trend_mark_list.append(trend_mark)
         df[f'{a_var}_mark'] = trend_mark_list
         return df
+
+    def statistic_bivariate_plot_earlier_and_late_classification_from_tif(self):
+        fdir = join(self.this_class_tif,'bivariate_plot_earlier_and_late_classification_from_tif')
+        trend_mark_dict = {'-1--1': 0, '-1-0': 1, '-1-1': 2, '0--1': 3, '0-0': 4, '0-1': 5, '1--1': 6, '1-0': 7,
+                           '1-1': 8}
+        trend_mark_dict_reverse = T.reverse_dic(trend_mark_dict)
+        mark_list = {'1--1','1-0','1-1'}
+        result_dict = {}
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            product = f.split('.')[0]
+            fpath = join(fdir,f)
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(fpath)
+            dict_i = {}
+            for mark in mark_list:
+                total = 0
+                count = 0
+                for pix in spatial_dict:
+                    val = spatial_dict[pix]
+                    if np.isnan(val):
+                        continue
+                    val = int(val)
+                    mark_i = trend_mark_dict_reverse[val][0]
+                    if mark_i == mark:
+                        count += 1
+                    total += 1
+                ratio = count/total * 100
+                dict_i[mark] = ratio
+            result_dict[product] = dict_i
+        df = pd.DataFrame(result_dict)
+        # plot
+        # df = df.T
+        df.plot(kind='bar',stacked=False)
+        plt.xticks(rotation=0)
+        plt.ylabel('Percentage (%)')
+        plt.tight_layout()
+        plt.show()
+
+    def long_term_trend(self):
+        fdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/origin_data'
+        outdir = join(self.this_class_tif,'long_term_trend_mk')
+        T.mk_dir(outdir)
+        spatial_dict_all = {}
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            var_i = f.split('.')[0]
+            spatial_dict = T.load_npy(fpath)
+            spatial_dict_all[var_i] = spatial_dict
+        df = T.spatial_dics_to_df(spatial_dict_all)
+        cols = df.columns
+        cols = list(cols)
+        cols.remove('pix')
+        trend_str_dict = {'increasing':1,'decreasing':-1,'no trend':0}
+        for c in cols:
+            outf = join(outdir,f'{c}.tif')
+            spatial_dict = T.df_to_spatial_dic(df,c)
+            spatial_dict_trend = {}
+            for pix in tqdm(spatial_dict):
+                vals = spatial_dict[pix]
+                if type(vals) == float:
+                    continue
+                a,b,r,_ = T.nan_line_fit(list(range(len(vals))),vals)
+                result = mk.original_test(vals)
+                trend_str = result[0]
+                trend_value = trend_str_dict[trend_str]
+                p_value = result[2]
+                spatial_dict_trend[pix] = trend_value
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict_trend,outf)
+
+    def bivariate_plot_earlier_and_late_strong_weak_classification(self):
+        fdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/Figure1'
+        outtifdir = join(self.this_class_tif,'bivariate_plot_earlier_and_late_strong_weak_classification')
+        T.mk_dir(outtifdir)
+        all_data_dict = {}
+        for f in T.listdir(fdir):
+            # print(f)
+            if not f.endswith('.tif'):
+                continue
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(join(fdir,f))
+            var_name = f.split('.')[0]
+            all_data_dict[var_name] = spatial_dict
+        df = T.spatial_dics_to_df(all_data_dict)
+        cols = list(df.columns)
+        # for c in cols:
+        #     print(c)
+        # exit()
+        var_list = ['Trendy_ensemble','MODIS_LAI','LAI3g']
+        period_list = ['during_early_peak','during_late']
+        for var_i in var_list:
+            outf = join(outtifdir, f'{var_i}.tif')
+            earlier_trend_var = f'{period_list[0]}_{var_i}_trend'
+            earlier_p_var = f'{period_list[0]}_{var_i}_p_value'
+            late_trend_var = f'{period_list[1]}_{var_i}_trend'
+            late_p_var = f'{period_list[1]}_{var_i}_p_value'
+            df = self.__add_strong_weak_to_df(df,earlier_trend_var,earlier_p_var)
+            df = self.__add_strong_weak_to_df(df,late_trend_var,late_p_var)
+            spatial_dict_earlier = T.df_to_spatial_dic(df,earlier_trend_var+'_mark')
+            spatial_dict_late = T.df_to_spatial_dic(df,late_trend_var+'_mark')
+            outf_earlier = join(outtifdir,f'{earlier_trend_var}.tif')
+            outf_late = join(outtifdir,f'{late_trend_var}.tif')
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict_earlier,outf_earlier)
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict_late,outf_late)
+
+    def __add_strong_weak_to_df(self,df,a_var,p_var):
+        trend_mark_list = []
+        for i, row in df.iterrows():
+            a = row[a_var]
+            p = row[p_var]
+            if a > 0:
+                if p < 0.05:
+                    trend_mark = 2
+                else:
+                    trend_mark = 1
+            else:
+                if p < 0.05:
+                    trend_mark = -2
+                else:
+                    trend_mark = -1
+            trend_mark_list.append(trend_mark)
+        df[f'{a_var}_mark'] = trend_mark_list
+        return df
+
+    def bivariate_plot_strong_weak(self):
+        fdir = join(self.this_class_tif,'bivariate_plot_earlier_and_late_strong_weak_classification')
+        outtifdir = join(self.this_class_tif,'bivariate_plot_strong_weak')
+        T.mk_dir(outtifdir)
+        var_list = ['Trendy_ensemble','MODIS_LAI','LAI3g']
+        period_list = ['during_early_peak','during_late']
+        for var_i in var_list:
+            outf = join(outtifdir, f'{var_i}.tif')
+            earlier_trend_var = f'{period_list[0]}_{var_i}_trend'
+            late_trend_var = f'{period_list[1]}_{var_i}_trend'
+            earlier_trend_var_mark_path = join(fdir,f'{earlier_trend_var}.tif')
+            late_trend_var_mark_path = join(fdir,f'{late_trend_var}.tif')
+            # tif1, tif2, x_label, y_label, min1, max1, min2, max2, outf
+            tif1 = earlier_trend_var_mark_path
+            tif2 = late_trend_var_mark_path
+            x_label = 'early peak'
+            y_label = 'late peak'
+            min1 = -2
+            max1 = 2
+            min2 = -2
+            max2 = 2
+            n = (5,5)
+            n_plot = (5,5)
+            # c00 = hex_to_Color('#e8e8e8')
+            # c10 = hex_to_Color('#be64ac')
+            # c01 = hex_to_Color('#5ac8c8')
+            # c11 = hex_to_Color('#3b4994')
+            corner_colors = ("#AF0000", '#FF9D00', "#FF9D00", "#007511")
+            zcmap = xycmap.custom_xycmap(corner_colors=corner_colors, n=n)
+            # plt.imshow(zcmap)
+            # plt.show()
+            xymap.Bivariate_plot().plot_bivariate_map(tif1, tif2, x_label, y_label, min1, max1, min2, max2, outf,n=n,n_legend=n_plot,zcmap=zcmap)
+
+    def flatten_plot_strong_weak(self):
+        fdir = join(self.this_class_tif,'bivariate_plot_earlier_and_late_strong_weak_classification')
+        outtifdir = join(self.this_class_tif,'flatten_plot_strong_weak')
+        T.mk_dir(outtifdir)
+        var_list = ['Trendy_ensemble','MODIS_LAI','LAI3g']
+        period_list = ['during_early_peak','during_late']
+        for var_i in var_list:
+            outf = join(outtifdir, f'{var_i}.tif')
+            earlier_trend_var = f'{period_list[0]}_{var_i}_trend'
+            late_trend_var = f'{period_list[1]}_{var_i}_trend'
+            earlier_trend_var_mark_path = join(fdir,f'{earlier_trend_var}.tif')
+            late_trend_var_mark_path = join(fdir,f'{late_trend_var}.tif')
+            spatial_dict_earlier = DIC_and_TIF().spatial_tif_to_dic(earlier_trend_var_mark_path)
+            spatial_dict_late = DIC_and_TIF().spatial_tif_to_dic(late_trend_var_mark_path)
+            dict_all = {'earlier':spatial_dict_earlier,'late':spatial_dict_late}
+            df = T.spatial_dics_to_df(dict_all)
+            value_list = [-2,-1,1,2]
+            value_dict = {}
+            flag = 0
+            for v1 in value_list:
+                for v2 in value_list:
+                    compose = f'{v1}_{v2}'
+                    value_dict[compose] = flag
+                    flag += 1
+            print(value_dict)
+            df_value_dict = pd.DataFrame.from_dict(value_dict,orient='index')
+            print(df_value_dict)
+            exit()
+            spatial_dict = {}
+            for i,row in df.iterrows():
+                pix = row['pix']
+                earlier = row['earlier']
+                late = row['late']
+                earlier = str(int(earlier))
+                late = str(int(late))
+                relass = earlier+'_'+late
+                value = value_dict[relass]
+                spatial_dict[pix] = value
+            outf = join(outtifdir, f'{var_i}.tif')
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict,outf)
+
+    def statistic_flatten_plot_strong_weak(self):
+        fdir = join(self.this_class_tif,'flatten_plot_strong_weak')
+        trend_mark_dict = {'-2_-2': 0, '-2_-1': 1, '-2_1': 2, '-2_2': 3, '-1_-2': 4, '-1_-1': 5,
+                           '-1_1': 6, '-1_2': 7, '1_-2': 8, '1_-1': 9, '1_1': 10, '1_2': 11,
+                           '2_-2': 12, '2_-1': 13, '2_1': 14, '2_2': 15}
+        # trend_mark_dict_reverse = T.reverse_dic(trend_mark_dict)
+        # print(trend_mark_dict_reverse)
+        # exit()
+        # mark_list = {'1--1','1-0','1-1'}
+        mark_list_group = [8,9,10,11,12,13,14,15]
+        result_dict = {}
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            product = f.split('.')[0]
+            fpath = join(fdir,f)
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(fpath)
+            dict_i = {}
+            for marks in mark_list_group:
+                total = 0
+                count = 0
+                for pix in spatial_dict:
+                    val = spatial_dict[pix]
+                    if np.isnan(val):
+                        continue
+                    val = int(val)
+                    # print(marks)
+                    # if val in marks:
+                    if val == marks:
+                        count += 1
+                    total += 1
+                ratio = count/total * 100
+                dict_i[str(marks)] = ratio
+            result_dict[product] = dict_i
+        df = pd.DataFrame(result_dict)
+        # plot
+        # df = df.T
+        df.plot(kind='bar',stacked=False)
+        plt.xticks(rotation=0)
+        plt.ylabel('Percentage (%)')
+        plt.tight_layout()
+        plt.show()
+
+    def time_sereis(self):
+        fdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/zscore/selected'
+        outdir = join(self.this_class_tif,'time_series')
+        T.mk_dir(outdir)
+        dict_all = {}
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            var_i = f.split('.')[0]
+            spatial_dict = T.load_npy(fpath)
+            dict_all[var_i] = spatial_dict
+        df = T.spatial_dics_to_df(dict_all)
+        cols = df.columns
+        # for c in cols:
+        #     print(c)
+        # exit()
+        df = Main_flow_2.Dataframe_func(df).df
+        limited_area_list = ['water-limited','energy-limited']
+        # limited_area_list = T.get_df_unique_val_list(df,'limited_area')
+        # print(limited_area_list)
+        # exit()
+        T.print_head_n(df,5)
+        period_list = ['during_early_peak','during_late']
+        product_list = ['Trendy_ensemble','MODIS_LAI','LAI3g']
+        for product in product_list:
+            for ltd in limited_area_list:
+                df_ltd = df[df['limited_area']==ltd]
+                for period in period_list:
+                    var = f'{period}_{product}_zscore'
+                    spatial_dict = T.df_to_spatial_dic(df_ltd,var)
+                    all_value = []
+                    for pix in spatial_dict:
+                        val = spatial_dict[pix]
+                        if type(val) == float:
+                            continue
+                        all_value.append(val)
+                    all_value = np.array(all_value)
+                    all_value_mean = []
+                    all_value_ci = []
+                    for i in range(all_value.shape[1]):
+                        val = all_value[:,i]
+                        val_mean = np.nanmean(val)
+                        err,_,_ = T.uncertainty_err(val)
+                        # err = np.nanstd(val)
+                        all_value_mean.append(val_mean)
+                        all_value_ci.append(err)
+                    all_value_mean = np.array(all_value_mean)
+                    all_value_ci = np.array(all_value_ci)
+                    plt.plot(all_value_mean)
+                    plt.fill_between(range(len(all_value_mean)),all_value_mean-all_value_ci,all_value_mean+all_value_ci,alpha=0.5,label=f'{period}')
+                plt.title(f'{product} {ltd}')
+                plt.legend()
+                outf = join(outdir,f'{product}_{ltd}.pdf')
+                plt.savefig(outf)
+                plt.close()
+
+
+
+        pass
 
 def main():
     # Earlier_positive_anomaly().run()
