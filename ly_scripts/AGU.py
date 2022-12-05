@@ -220,51 +220,74 @@ class SEM:
         '''
         pass
 
-
     def run(self):
         self.per_value_SEM()
         pass
 
-
     def per_value_SEM(self):
         dff = Dataframe_per_value().dff
-        dff_1 = Dataframe().dff
         df = T.load_df(dff)
-        df1 = T.load_df(dff_1)
-        late_lai_spatial_dict = T.df_to_spatial_dic(df1,'during_late_MODIS_LAI_zscore')
-        # late_lai_spatial_dict = T.df_to_spatial_dic(df1,'during_early_peak_MODIS_LAI_zscore')
-        browning_pix_list = []
-        for pix in late_lai_spatial_dict:
-            vals = late_lai_spatial_dict[pix]
-            if type(vals) == float:
-                continue
-            a,b,r,p = T.nan_line_fit(list(range(len(vals))),vals)
-            # if p > 0.05:
-                # continue
-            # if a > 0:
-            #     continue
-            browning_pix_list.append(pix)
-        browning_pix_list = set(browning_pix_list)
         T.print_head_n(df, 5)
         cols = df.columns
         for c in cols:
             print(c)
+        # selected_pix = self.filter_df_with_browning_pix() # late browning
+        selected_pix = self.filter_pix_with_flatten_strong_weak()
+        # exit()
         result_dict = {}
         for i,row in tqdm(df.iterrows(),total=len(df)):
             pix = row['pix']
             year = row['year']
-            if pix not in browning_pix_list:
+            if pix not in selected_pix:
                 continue
             key = (pix,year)
             result_i = row.to_dict()
             result_dict[key] = result_i
         df_new = T.dic_to_df(result_dict,'pix_year')
         df_new = Main_flow_2.Dataframe_func(df_new).df
-        df_new = df_new[df_new['lat']>50]
-        df_new = df_new[df_new['lon']>0]
-
         self.build_model(df_new)
         pass
+
+    def filter_pix_with_flatten_strong_weak(self):
+        fdir = join(CarryoverInDryYear().this_class_tif,'flatten_plot_strong_weak')
+        f = 'MODIS_LAI.tif'
+        fpath = join(fdir,f)
+        spatial_dict = DIC_and_TIF().spatial_tif_to_dic(fpath)
+        trend_mark_dict = {'-2_-2': 0, '-2_-1': 1, '-2_1': 2, '-2_2': 3, '-1_-2': 4, '-1_-1': 5,
+                           '-1_1': 6, '-1_2': 7, '1_-2': 8, '1_-1': 9, '1_1': 10, '1_2': 11,
+                           '2_-2': 12, '2_-1': 13, '2_1': 14, '2_2': 15}
+        selected_value = [8,9,12,13]
+        selected_value = set(selected_value)
+        selected_pix = []
+        spatial_dict_1 = {}
+        for pix in spatial_dict:
+            val = spatial_dict[pix]
+            if np.isnan(val):
+                continue
+            if not val in selected_value:
+                continue
+            selected_pix.append(pix)
+            spatial_dict_1[pix] = val
+        selected_pix = set(selected_pix)
+        # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_1)
+        # plt.imshow(arr)
+        # DIC_and_TIF().plot_back_ground_arr(land_tif)
+        # plt.show()
+        return selected_pix
+
+    def filter_df_with_browning_pix(self):
+        dff_1 = Dataframe().dff
+        df1 = T.load_df(dff_1)
+        late_lai_spatial_dict = T.df_to_spatial_dic(df1, 'during_late_MODIS_LAI_zscore')
+        browning_pix_list = []
+        for pix in late_lai_spatial_dict:
+            vals = late_lai_spatial_dict[pix]
+            if type(vals) == float:
+                continue
+            a, b, r, p = T.nan_line_fit(list(range(len(vals))), vals)
+            browning_pix_list.append(pix)
+        browning_pix_list = set(browning_pix_list)
+        return browning_pix_list
 
     def trend_SEM(self):
         dff = Dataframe().dff
@@ -351,13 +374,20 @@ class SEM:
                 during_late_MODIS_LAI_zscore ~ during_peak_CCI_SM_zscore + during_early_peak_MODIS_LAI_zscore
                 # residual correlations
                 '''
+        # desc_energy_limited = '''
+        #         # regressions
+        #         during_late_CCI_SM_zscore ~ during_early_peak_MODIS_LAI_zscore
+        #         during_late_MODIS_LAI_zscore ~ during_early_peak_MODIS_LAI_zscore + during_late_CCI_SM_zscore + during_late_VPD_zscore
+        #         during_late_VPD_zscore ~ during_late_CCI_SM_zscore
+        #         # residual correlations
+        #         '''
         desc_energy_limited = '''
                 # regressions
-                during_peak_SPEI3_zscore ~ during_early_peak_MODIS_LAI_zscore
-                during_late_MODIS_LAI_zscore ~ during_early_peak_MODIS_LAI_zscore + during_peak_SPEI3_zscore + during_late_Temp_zscore
-                during_late_Temp_zscore ~ during_peak_SPEI3_zscore
+                during_peak_CCI_SM_zscore ~ during_early_peak_MODIS_LAI_zscore
+                during_late_MODIS_LAI_zscore ~ during_early_peak_MODIS_LAI_zscore + during_peak_CCI_SM_zscore
                 # residual correlations
                 '''
+
         if ltd_region == 'water-limited':
             return desc_water_limited
         if ltd_region == 'energy-limited':
@@ -379,27 +409,27 @@ class SEM:
         # print(limited_area)
         # exit()
         print(limited_area)
-        for lc in lc_list:
-            df_lc = df[df['landcover_GLC']==lc]
-            for ltd in limited_area:
-                desc = self.model_description_not_detrend(ltd)
-                if desc == None:
-                    continue
-                # df_ltd = df_lc[df_lc['limited_area']==ltd]
-                df_ltd = df_lc[df_lc['limited_area']==ltd]
-                # DIC_and_TIF().plot_df_spatial_pix(df_ltd, land_tif)
-                # plt.title(f'{ltd} {lc}')
-                # plt.show()
-                # DIC_and_TIF().plot_df_spatial_pix(df_ltd, land_tif)
-                # plt.title(ltd)
-                # plt.show()
-                # DIC_and_TIF().plot_df_spatial_pix(df_ltd,land_tif)
-                # plt.title(ltd)
-                # plt.show()
-                mod = semopy.Model(desc)
-                res = mod.fit(df_ltd)
-                # semopy.report(mod, f'SEM_result/{ltd}-{lc}')
-                semopy.report(mod, f'SEM_result/{ltd}-{lc}')
+        # for lc in lc_list:
+        #     df_lc = df[df['landcover_GLC']==lc]
+        for ltd in limited_area:
+            desc = self.model_description_not_detrend(ltd)
+            if desc == None:
+                continue
+            # df_ltd = df_lc[df_lc['limited_area']==ltd]
+            df_ltd = df[df['limited_area']==ltd]
+            # DIC_and_TIF().plot_df_spatial_pix(df_ltd, land_tif)
+            # plt.title(f'{ltd} {lc}')
+            # plt.show()
+            # DIC_and_TIF().plot_df_spatial_pix(df_ltd, land_tif)
+            # plt.title(ltd)
+            # plt.show()
+            # DIC_and_TIF().plot_df_spatial_pix(df_ltd,land_tif)
+            # plt.title(ltd)
+            # plt.show()
+            mod = semopy.Model(desc)
+            res = mod.fit(df_ltd)
+            # semopy.report(mod, f'SEM_result/{ltd}-{lc}')
+            semopy.report(mod, f'SEM_result/{ltd}')
 
     def plot_scatter(self,df):
         x = df['during_late_CO2_zscore'].values
@@ -1681,7 +1711,9 @@ class CarryoverInDryYear:
         # self.bivariate_plot_strong_weak()
         # self.flatten_plot_strong_weak()
         # self.statistic_flatten_plot_strong_weak()
-        self.time_sereis()
+        # self.time_sereis()
+        # self.earlier_green()
+        self.statistic_earlier_green()
 
     def matrix(self):
         dff = Dataframe_per_value().dff
@@ -2191,9 +2223,73 @@ class CarryoverInDryYear:
                 plt.savefig(outf)
                 plt.close()
 
+    def earlier_green(self):
+        fdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/zscore/selected'
+        outdir = join(self.this_class_tif,'earlier_green')
+        T.mk_dir(outdir)
+        dff = Dataframe().dff
+        df = T.load_df(dff)
+        cols = df.columns
+        earlier_lai_var = 'during_early_peak_MODIS_LAI_zscore'
+        # late_sm_var = 'during_late_CCI_SM_zscore'
+        # late_sm_var = 'during_peak_CCI_SM_zscore'
+        # late_sm_var = 'during_late_MODIS_LAI_zscore'
+        late_sm_var = 'during_late_VPD_zscore'
+        for c in cols:
+            print(c)
+        lai_spatial_dict = T.df_to_spatial_dic(df,earlier_lai_var)
+        sm_spatial_dict = T.df_to_spatial_dic(df,late_sm_var)
+        spatial_dict = {}
+        for pix in tqdm(lai_spatial_dict):
+            lai = lai_spatial_dict[pix]
+            if type(lai) == float:
+                continue
+            sm = sm_spatial_dict[pix]
+            if type(sm) == float:
+                continue
+            lai = np.array(lai)
+            sm = np.array(sm)
+            lai_gt_0 = lai > 0
+            sm_selected = sm[lai_gt_0]
+            sm_mean = np.nanmean(sm_selected)
+            spatial_dict[pix] = sm_mean
+        outf = join(outdir,f'{late_sm_var}.tif')
+        DIC_and_TIF().pix_dic_to_tif(spatial_dict,outf)
 
+    def statistic_earlier_green(self):
+        # fdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/zscore/selected'
+        fdir = join(self.this_class_tif,'earlier_green')
+        outdir = join(self.this_class_png,'statistic_earlier_green')
+        T.mk_dir(outdir)
+        dict_all = {}
+        var_list = []
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            if not fpath.endswith('.tif'):
+                continue
+            var_i = f.split('.')[0]
+            var_list.append(var_i)
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(fpath)
+            dict_all[var_i] = spatial_dict
+        df = T.spatial_dics_to_df(dict_all)
+        df = Main_flow_2.Dataframe_func(df).df
+        limited_area_list = ['water-limited','energy-limited']
+        for var_i in var_list:
+            plt.figure()
+            for ltd in limited_area_list:
+                df_ltd = df[df['limited_area']==ltd]
+                vals = df_ltd[var_i].values
+                x,y = Plot().plot_hist_smooth(vals,alpha=0,bins=80)
+                # plt.plot(x,y,label=f'{ltd}')
+                plt.fill(x, y,zorder=-9,label=f'{ltd}',alpha=0.5)
+                plt.ylim(0,0.05)
+                plt.xlim(-1.3,1.3)
+            plt.title(f'{var_i}')
+            plt.legend()
+            outf = join(outdir,f'{var_i}.pdf')
+            plt.savefig(outf)
+            plt.close()
 
-        pass
 
 def main():
     # Earlier_positive_anomaly().run()
