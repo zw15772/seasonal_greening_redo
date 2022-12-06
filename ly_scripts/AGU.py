@@ -1,8 +1,5 @@
 # coding=utf-8
 import re
-import tarfile
-
-import matplotlib.pyplot as plt
 import xymap
 import xycmap
 import pymannkendall as mk
@@ -2291,6 +2288,92 @@ class CarryoverInDryYear:
             plt.close()
 
 
+class ResponseFunction:
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = T.mk_class_dir('ResponseFunction',
+                                                                                       result_root_this_script)
+        self.dff = join(self.this_class_arr, 'dataframe.df')
+        self.Yfdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/zscore/Y/late'
+        self.Xfdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/data_for_SEM_with_trend/corresponding_factors'
+        pass
+
+    def run(self):
+        # self.build_df()
+        self.plot_response_func()
+        pass
+
+    def build_df(self):
+        Yfdir = self.Yfdir
+        Xfdir = self.Xfdir
+        dict_all = {}
+        var_list = []
+        for f in tqdm(T.listdir(Yfdir),desc='Y'):
+            fpath = join(Yfdir,f)
+            spatial_dict = T.load_npy(fpath)
+            var_i = f.split('.')[0]
+            dict_all[var_i] = spatial_dict
+            var_list.append(var_i)
+        for f in tqdm(T.listdir(Xfdir),desc='X'):
+            fpath = join(Xfdir,f)
+            spatial_dict = T.load_npy(fpath)
+            var_i = f.split('.')[0]
+            dict_all[var_i] = spatial_dict
+            var_list.append(var_i)
+        df = T.spatial_dics_to_df(dict_all)
+        df = Dataframe_per_value_transform(df,var_list,2000,2018).df
+        T.save_df(df,self.dff)
+        T.df_to_excel(df,self.dff)
+
+    def get_x_list(self):
+        xfdir = self.Xfdir
+        x_list = []
+        for f in T.listdir(xfdir):
+            if not f.endswith('.npy'):
+                continue
+            x_list.append(f.split('.')[0])
+        return x_list
+
+    def get_y_list(self):
+        yfdir = self.Yfdir
+        y_list = []
+        for f in T.listdir(yfdir):
+            if not f.endswith('.npy'):
+                continue
+            y_list.append(f.split('.')[0])
+        return y_list
+
+    def plot_response_func(self):
+        df = T.load_df(self.dff)
+        x_list = self.get_x_list()
+        y_list = self.get_y_list()
+        x_list.remove('EOS_zscore')
+        x_list.remove('SWE_zscore')
+        # x_list = ['during_peak_CCI_SM_zscore']
+        x_bins = np.arange(-2,2,0.1)
+        for x_var in x_list:
+            print(x_var)
+            x_vals = df[x_var].values
+            df_group,bins_list_str = T.df_bin(df,x_var,x_bins)
+            for y_var in y_list:
+                mean_list = []
+                x_label_list = []
+                for name,df_group_i in df_group:
+                    vals = df_group_i[y_var].tolist()
+                    mean = np.nanmean(vals)
+                    mean_list.append(mean)
+                    x_label_list.append(name.left)
+                if 'MODIS' in y_var:
+                    c = 'k'
+                    lw = 4
+                else:
+                    c=None
+                    lw = 1
+                plt.plot(x_label_list,mean_list,label=f'{y_var}',c=c,lw=lw)
+            plt.legend()
+            plt.xlabel(f'{x_var}')
+            plt.ylabel('Late LAI anomaly')
+            plt.show()
+
 def main():
     # Earlier_positive_anomaly().run()
     # Dataframe().run()
@@ -2302,7 +2385,8 @@ def main():
     # Bivarite_plot_partial_corr().run()
     # Scatter_plot().run()
     # RF_per_value().run()
-    CarryoverInDryYear().run()
+    # CarryoverInDryYear().run()
+    ResponseFunction().run()
     pass
 
 
