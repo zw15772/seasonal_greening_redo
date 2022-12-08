@@ -1252,23 +1252,55 @@ class Scatter_plot:
     def run(self):
         self.matrix_plot()
         # self.earlier_and_late_greening_trend_binary_with_p()
-
         pass
 
+    def Trendy_dataframe(self):
+
+        fdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/zscore/Trendy_ensemble'
+        dict_all = {}
+        var_list = []
+        for f in T.listdir(fdir):
+            fpath = join(fdir,f)
+            dict_i = T.load_npy(fpath)
+            var_i = f.split('.')[0]
+            dict_all[var_i] = dict_i
+            var_list.append(var_i)
+        df = T.spatial_dics_to_df(dict_all)
+        start_year = 2000
+        end_year = 2018
+        df = Dataframe_per_value_transform(df, var_list, start_year, end_year).df
+        df = Main_flow_2.Dataframe_func(df).df
+        return df
+
+
     def matrix_plot(self):
-        dff = Dataframe_per_value().dff
-        df = T.load_df(dff)
+        # dff = Dataframe_per_value().dff
+        # df = T.load_df(dff)
+        df = self.Trendy_dataframe()
         # df = self.filter_df_with_trend_p(df)
         # df = self.filter_df_with_gs_SPEI3(df)
         # mode = '1'
-        mode = '2'
-        df = self.filter_df_with_trend_class(df,mode=mode)
+        # mode = '2'
+        # df = self.filter_df_with_trend_class(df,mode=mode)
+        #  1_-2 8
+        #  1_-1 9
+        #  2_-2 12
+        #  2_-1 13
+        mark_in_list = ['2_-2','2_-1','1_-2','1_-1']
+        # mark_in_list = ['2_-2','2_-1']
+        # mark_in_list = ['1_-2','1_-1']
+        title = '|'.join(mark_in_list)
+        # df = self.filter_df_with_strong_weak(df,['2_-2','2_-1'])
+        # df = self.filter_df_with_strong_weak(df,mark_in_list)
+        df = self.filter_df_with_strong_weak_trendy(df,mark_in_list)
+        DIC_and_TIF().plot_df_spatial_pix(df,land_tif)
+        plt.show()
         cols = df.columns
         for c in cols:
             print(c)
         # limited_area = 'water-limited'
-        limited_area = 'energy-limited'
-        df = df[df['limited_area']==limited_area]
+        # limited_area = 'energy-limited'
+        # df = df[df['limited_area']==limited_area]
         # limited_area = 'All'
         print(len(df))
         # during_early_peak_CCI_SM_zscore
@@ -1285,8 +1317,10 @@ class Scatter_plot:
         # early_sm_var = 'during_late_VPD_zscore'
         # early_sm_var = 'during_peak_VPD_zscore'
         # early_sm_var = 'detrend_during_early_peak_SPEI3'
-        late_lai_var = 'during_late_MODIS_LAI_zscore'
-        early_lai_var = 'during_early_peak_MODIS_LAI_zscore'
+        # late_lai_var = 'during_late_MODIS_LAI_zscore'
+        # early_lai_var = 'during_early_peak_MODIS_LAI_zscore'
+        late_lai_var = 'during_late_Trendy_ensemble_zscore'
+        early_lai_var = 'during_early_peak_Trendy_ensemble_zscore'
         df = df.dropna(subset=[early_sm_var,late_lai_var])
 
         early_sm = df[early_sm_var].values.tolist()
@@ -1305,14 +1339,14 @@ class Scatter_plot:
         # plt.show()
         earlier_lai = T.remove_np_nan(earlier_lai)
         earlier_lai = np.array(earlier_lai)
-        earlier_lai = earlier_lai[earlier_lai>0]
-        earlier_lai = earlier_lai[earlier_lai<1.]
+        # earlier_lai = earlier_lai[earlier_lai>0]
+        # earlier_lai = earlier_lai[earlier_lai<1.]
         # sm_bins = np.percentile(early_sm,percentile_list*100)
         # late_lai_bins = np.percentile(late_lai,percentile_list*100)
         # earlier_lai_bins = np.percentile(earlier_lai,percentile_list*100)
         sm_bins = np.linspace(min_bin,max_bin,n)
         # late_lai_bins = np.linspace(min_bin,max_bin,n)
-        earlier_lai_bins = np.linspace(0,1,n)
+        earlier_lai_bins = np.linspace(0,2,n)
         df_group_sm,bins_list_str_sm = T.df_bin(df,early_sm_var,sm_bins)
         matrix = []
         x_ticks = []
@@ -1337,7 +1371,8 @@ class Scatter_plot:
         plt.xlabel(early_lai_var)
         plt.ylabel(early_sm_var)
         plt.colorbar()
-        plt.title(f'{limited_area} {mode}')
+        # plt.title(f'{limited_area} {mode}')
+        plt.title(title)
         plt.tight_layout()
         plt.show()
 
@@ -1450,6 +1485,78 @@ class Scatter_plot:
             df_in2 = df_in[df_in['trend_class'] == 6]
             df_in = pd.concat([df_in1,df_in2])
             return df_in
+    def filter_df_with_strong_weak(self,df_in,mark_in_list):
+        '''
+        :param mark_in:
+        1_-2 8
+        1_-1 9
+        2_-2 12
+        2_-1 13
+        :param df_in:
+        :return:
+        '''
+        fdir = join(CarryoverInDryYear().this_class_tif, 'flatten_plot_strong_weak')
+        # T.open_path_and_file(fdir)
+        # exit()
+        trend_mark_dict = {'-2_-2': 0, '-2_-1': 1, '-2_1': 2, '-2_2': 3, '-1_-2': 4, '-1_-1': 5,
+                           '-1_1': 6, '-1_2': 7, '1_-2': 8, '1_-1': 9, '1_1': 10, '1_2': 11,
+                           '2_-2': 12, '2_-1': 13, '2_1': 14, '2_2': 15}
+        trend_mark_dict_reverse = T.reverse_dic(trend_mark_dict)
+        # print(trend_mark_dict_reverse)
+        # exit()
+        # mark_list = {'1--1','1-0','1-1'}
+        mark_list_group = [8, 9, 12, 13]
+        f = 'MODIS_LAI.tif'
+        product = f.split('.')[0]
+        fpath = join(fdir, f)
+        spatial_dict = DIC_and_TIF().spatial_tif_to_dic(fpath)
+        df_in = T.add_spatial_dic_to_df(df_in, spatial_dict, 'strong_weak')
+        df_in = df_in.dropna(subset=['strong_weak'])
+        df_list = []
+        for mark_in in mark_in_list:
+            df_mark = df_in[df_in['strong_weak'] == trend_mark_dict[mark_in]]
+            df_list.append(df_mark)
+        df_out = pd.concat(df_list)
+        return df_out
+
+        pass
+
+    def filter_df_with_strong_weak_trendy(self,df_in,mark_in_list):
+        '''
+        :param mark_in:
+        1_-2 8
+        1_-1 9
+        2_-2 12
+        2_-1 13
+        :param df_in:
+        :return:
+        '''
+        fdir = join(CarryoverInDryYear().this_class_tif, 'flatten_plot_strong_weak')
+        # T.open_path_and_file(fdir)
+        # exit()
+        trend_mark_dict = {'-2_-2': 0, '-2_-1': 1, '-2_1': 2, '-2_2': 3, '-1_-2': 4, '-1_-1': 5,
+                           '-1_1': 6, '-1_2': 7, '1_-2': 8, '1_-1': 9, '1_1': 10, '1_2': 11,
+                           '2_-2': 12, '2_-1': 13, '2_1': 14, '2_2': 15}
+        trend_mark_dict_reverse = T.reverse_dic(trend_mark_dict)
+        # print(trend_mark_dict_reverse)
+        # exit()
+        # mark_list = {'1--1','1-0','1-1'}
+        mark_list_group = [8, 9, 12, 13]
+        f = 'Trendy_ensemble.tif'
+        product = f.split('.')[0]
+        fpath = join(fdir, f)
+        spatial_dict = DIC_and_TIF().spatial_tif_to_dic(fpath)
+        df_in = T.add_spatial_dic_to_df(df_in, spatial_dict, 'strong_weak')
+        df_in = df_in.dropna(subset=['strong_weak'])
+        df_list = []
+        for mark_in in mark_in_list:
+            df_mark = df_in[df_in['strong_weak'] == trend_mark_dict[mark_in]]
+            df_list.append(df_mark)
+        df_out = pd.concat(df_list)
+        return df_out
+
+        pass
+
 
 class RF_per_value:
 
@@ -1704,13 +1811,13 @@ class CarryoverInDryYear:
         # self.bivariate_plot_earlier_and_late_classification_from_tif()
         # self.statistic_bivariate_plot_earlier_and_late_classification_from_tif()
         # self.long_term_trend()
-        # self.bivariate_plot_earlier_and_late_strong_weak_classification()
+        self.bivariate_plot_earlier_and_late_strong_weak_classification()
         # self.bivariate_plot_strong_weak()
         # self.flatten_plot_strong_weak()
         # self.statistic_flatten_plot_strong_weak()
         # self.time_sereis()
         # self.earlier_green()
-        self.statistic_earlier_green()
+        # self.statistic_earlier_green()
 
     def matrix(self):
         dff = Dataframe_per_value().dff
@@ -2383,10 +2490,10 @@ def main():
     # Moving_window_single_correlation().run()
     # Single_corr().run()
     # Bivarite_plot_partial_corr().run()
-    # Scatter_plot().run()
+    Scatter_plot().run()
     # RF_per_value().run()
     # CarryoverInDryYear().run()
-    ResponseFunction().run()
+    # ResponseFunction().run()
     pass
 
 
