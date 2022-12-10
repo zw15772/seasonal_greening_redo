@@ -1252,8 +1252,8 @@ class Scatter_plot:
         pass
 
     def run(self):
-        self.matrix_plot()
-        # self.matrix_plot_every_trendy_model()
+        # self.matrix_plot()
+        self.matrix_plot_every_trendy_model()
         # self.earlier_and_late_greening_trend_binary_with_p()
         pass
 
@@ -1262,20 +1262,25 @@ class Scatter_plot:
         T.mk_dir(outdir,force=True)
         dff = join(outdir,'Trendy_dataframe.df')
         xfdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/data_for_SEM_with_trend/for_matrix_plot'
-        yfdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/data_for_SEM_with_trend/for_matrix_plot_trendy'
+        yfdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/data_for_SEM_with_trend/for_matrix_plot_trendy/late'
+        y_earlier_fdir = '/Users/liyang/Desktop/detrend_zscore_test_factors/data_for_SEM_with_trend/for_matrix_plot_trendy/early_peak'
 
         x_list = []
         y_list = []
+        earlier_list = []
         for f in T.listdir(xfdir):
             var_i = f.split('.')[0]
             x_list.append(var_i)
         for f in T.listdir(yfdir):
             var_i = f.split('.')[0]
             y_list.append(var_i)
+        for f in T.listdir(y_earlier_fdir):
+            var_i = f.split('.')[0]
+            earlier_list.append(var_i)
 
         if isfile(dff):
             df = T.load_df(dff)
-            return df,x_list,y_list
+            return df,x_list,y_list,earlier_list
         dict_all = {}
         var_list = []
         for f in T.listdir(xfdir):
@@ -1290,6 +1295,12 @@ class Scatter_plot:
             var_i = f.split('.')[0]
             dict_all[var_i] = dict_i
             var_list.append(var_i)
+        for f in T.listdir(y_earlier_fdir):
+            fpath = join(y_earlier_fdir,f)
+            dict_i = T.load_npy(fpath)
+            var_i = f.split('.')[0]
+            dict_all[var_i] = dict_i
+            var_list.append(var_i)
         df = T.spatial_dics_to_df(dict_all)
         start_year = 2000
         end_year = 2018
@@ -1297,7 +1308,7 @@ class Scatter_plot:
         df = Main_flow_2.Dataframe_func(df).df
         T.save_df(df,dff)
         T.df_to_excel(df,join(outdir,'Trendy_dataframe.xlsx'))
-        return df,x_list,y_list
+        return df,x_list,y_list,earlier_list
 
 
     def matrix_plot(self):
@@ -1415,7 +1426,7 @@ class Scatter_plot:
 
 
     def matrix_plot_every_trendy_model(self):
-        df,x_list,y_list = self.Trendy_dataframe()
+        df,x_list,y_list,_ = self.Trendy_dataframe()
         outdir = join(self.this_class_png,'matrix_plot_every_trendy_model')
         T.mk_dir(outdir)
         # mark_in_list = ['2_-2','2_-1','1_-2','1_-1']
@@ -1424,10 +1435,14 @@ class Scatter_plot:
         # title = '|'.join(mark_in_list)
         for y_var in y_list:
             cols = df.columns
-            early_sm_var = 'during_late_Temp_zscore'
+            # early_sm_var = 'during_late_Temp_zscore'
+            early_sm_var = 'during_late_VPD_zscore'
             late_lai_var = y_var
+            filter_var = y_var.replace('late','early_peak')
+            print(filter_var)
             early_lai_var = 'during_peak_CCI_SM_zscore'
             df = df.dropna(subset=[early_sm_var,late_lai_var])
+            df = df[df[filter_var]>0]
 
             early_sm = df[early_sm_var].values.tolist()
             late_lai = df[late_lai_var].values.tolist()
@@ -2037,7 +2052,7 @@ class CarryoverInDryYear:
 
     def run(self):
 
-        self.matrix()
+        # self.matrix()
         # self.bivariate_plot_earlier_and_late()
         # self.bivariate_plot_earlier_and_late_classification()
         # self.bivariate_plot_earlier_and_late_classification_from_tif()
@@ -2049,7 +2064,9 @@ class CarryoverInDryYear:
         # self.statistic_flatten_plot_strong_weak()
         # self.time_sereis()
         # self.earlier_green()
-        # self.statistic_earlier_green()
+        self.statistic_earlier_green()
+
+        pass
 
     def matrix(self):
         dff = Dataframe_per_value().dff
@@ -2570,7 +2587,8 @@ class CarryoverInDryYear:
         # late_sm_var = 'during_late_CCI_SM_zscore'
         # late_sm_var = 'during_peak_CCI_SM_zscore'
         # late_sm_var = 'during_late_MODIS_LAI_zscore'
-        late_sm_var = 'during_late_VPD_zscore'
+        # late_sm_var = 'during_late_VPD_zscore'
+        late_sm_var = 'during_late_Temp_zscore'
         for c in cols:
             print(c)
         lai_spatial_dict = T.df_to_spatial_dic(df,earlier_lai_var)
@@ -2772,8 +2790,8 @@ def main():
     # Bivarite_plot_partial_corr().run()
     # Scatter_plot().run()
     # RF_per_value().run()
-    # CarryoverInDryYear().run()
-    ResponseFunction().run()
+    CarryoverInDryYear().run()
+    # ResponseFunction().run()
     pass
 
 
