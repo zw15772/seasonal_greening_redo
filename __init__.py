@@ -95,7 +95,7 @@ def kill_python_process():
         if 'python3.9' in name:
             p.kill()
 
-T = Tools()
-T.mk_dir(temporary_root)
+# T = Tools()
+# T.mk_dir(temporary_root)
 if __name__ == '__main__':
     pass

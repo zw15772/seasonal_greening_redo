@@ -8,7 +8,8 @@ import semopy
 import lytools
 from __init__ import *
 land_tif = '/Volumes/NVME2T/greening_project_redo/conf/land.tif'
-result_root_this_script = '/Users/liyang/Desktop/detrend_zscore_test_factors/results'
+# result_root_this_script = '/Users/liyang/Desktop/detrend_zscore_test_factors/results'
+result_root_this_script = '/Volumes/NVME2T/detrend_zscore_test_factors/results'
 
 
 class Earlier_positive_anomaly:
@@ -1045,7 +1046,7 @@ class Bivarite_plot_partial_corr:
         # self.earlier_and_late_greening_trend_binary_with_p()
         # self.partial_corr_dict_to_tif()
         # self.partial_corr_window_trend()
-        self.long_term_corr_dict_to_tif()
+        # self.long_term_corr_dict_to_tif()
         self.bivarite_plot()
         pass
 
@@ -1442,7 +1443,7 @@ class Scatter_plot:
             print(filter_var)
             early_lai_var = 'during_peak_CCI_SM_zscore'
             df = df.dropna(subset=[early_sm_var,late_lai_var])
-            df = df[df[filter_var]>0]
+            # df = df[df[filter_var]>0]
 
             early_sm = df[early_sm_var].values.tolist()
             late_lai = df[late_lai_var].values.tolist()
@@ -1486,7 +1487,7 @@ class Scatter_plot:
                 temp = np.array(temp)
                 matrix.append(temp)
             matrix = np.array(matrix)
-            plt.imshow(matrix,cmap='RdBu',vmin=-0.4,vmax=0.4)
+            plt.imshow(matrix,cmap='RdBu',vmin=-.4,vmax=.4)
             plt.xticks(range(len(x_ticks)),x_ticks,rotation=90)
             plt.yticks(range(len(y_ticks)),y_ticks)
             plt.xlabel(early_lai_var)
@@ -1496,9 +1497,9 @@ class Scatter_plot:
             plt.title(y_var)
             plt.tight_layout()
             outf = join(outdir,y_var+'.pdf')
-            plt.savefig(outf)
-            plt.close()
-            # plt.show()
+            # plt.savefig(outf)
+            # plt.close()
+            plt.show()
 
     def earlier_and_late_greening_trend_binary_with_p(self):
         dff = Dataframe().dff
@@ -2058,13 +2059,13 @@ class CarryoverInDryYear:
         # self.bivariate_plot_earlier_and_late_classification_from_tif()
         # self.statistic_bivariate_plot_earlier_and_late_classification_from_tif()
         # self.long_term_trend()
-        # self.bivariate_plot_earlier_and_late_strong_weak_classification()
+        self.bivariate_plot_earlier_and_late_strong_weak_classification()
         # self.bivariate_plot_strong_weak()
         # self.flatten_plot_strong_weak()
         # self.statistic_flatten_plot_strong_weak()
         # self.time_sereis()
         # self.earlier_green()
-        self.statistic_earlier_green()
+        # self.statistic_earlier_green()
 
         pass
 
