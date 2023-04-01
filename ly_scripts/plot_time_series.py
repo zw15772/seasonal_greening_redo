@@ -74,8 +74,93 @@ class Plot_line:
 
         pass
 
+
+class Frequency:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = \
+            T.mk_class_dir('Frequency', result_root_this_script, mode=2)
+        self.data_dir = '/Users/liyang/Desktop/process_MODIS_LAI_monthly/npy'
+        self.threshold_list = [0.00, 0.25, 0.5, 0.75, 1.00]
+        self.product = 'MODIS'
+        pass
+
+    def run(self):
+        # self.amplifying_tif()
+        self.gen_df()
+        pass
+
+
+    def amplifying_tif(self):
+        outdir = join(self.this_class_tif, 'amplifying_ratio')
+        T.mk_dir(outdir)
+        product = self.product
+        threshold_list = self.threshold_list
+        early_peak_f = join(self.data_dir,product, 'detrend_early_peak_MODIS_LAI_zscore.npy')
+        late_f = join(self.data_dir,product, 'detrend_late_MODIS_LAI_zscore.npy')
+        early_peak_dict = T.load_npy(early_peak_f)
+        late_dict = T.load_npy(late_f)
+        for threshold in threshold_list:
+            threshold_str = f'{threshold:.2f}'
+            amplifying_ratio_dict = {}
+            for pix in tqdm(early_peak_dict,desc=f'{product}_{threshold_str}'):
+                early_peak = early_peak_dict[pix]
+                late = late_dict[pix]
+                early_peak_condition = early_peak > threshold
+                late_condition = late > threshold
+                True_False = np.logical_and(early_peak_condition,late_condition)
+                father = np.sum(early_peak_condition)
+                son = np.sum(True_False)
+                amplifying_ratio = son / father * 100
+                amplifying_ratio_dict[pix] = amplifying_ratio
+            arr = DIC_and_TIF().pix_dic_to_spatial_arr(amplifying_ratio_dict)
+            outf = join(outdir, f'{product}_{threshold_str}.tif')
+            DIC_and_TIF().arr_to_tif(arr,outf)
+        T.open_path_and_file(outdir)
+        pass
+
+    def gen_df(self):
+        dff_template = '/Users/liyang/Desktop/process_MODIS_LAI_monthly/df/Build_process_early_greening_late_browning_05.df'
+        fdir = join(self.this_class_tif, 'amplifying_ratio')
+        threshold_list = self.threshold_list
+        product = self.product
+        df_template = T.load_df(dff_template)
+        df_group_dict = T.df_groupby(df_template,'pix')
+        Humid_Arid_spatial_dict = {}
+        for pix in df_group_dict:
+            df_i = df_group_dict[pix]
+            Humid_Arid = df_i['Humid_Arid'].tolist()[0]
+            Humid_Arid_spatial_dict[pix] = Humid_Arid
+
+        all_spatial_dict = {}
+        for threshold in threshold_list:
+            threshold_str = f'{threshold:.2f}'
+            f = join(fdir, f'{product}_{threshold_str}.tif')
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(f)
+            all_spatial_dict[threshold_str] = spatial_dict
+        df = T.spatial_dics_to_df(all_spatial_dict)
+        df = T.add_spatial_dic_to_df(df,Humid_Arid_spatial_dict,'Humid_Arid')
+        Humid_Arid_list = T.get_df_unique_val_list(df,'Humid_Arid')
+        for Humid_Arid in Humid_Arid_list:
+            print(Humid_Arid)
+            df_Humid_Arid = df[df['Humid_Arid'] == Humid_Arid]
+            x = []
+            y = []
+            for threshold in threshold_list:
+                threshold_str = f'{threshold:.2f}'
+                ratio_list = df_Humid_Arid[threshold_str].tolist()
+                mean = np.nanmean(ratio_list)
+                x.append(threshold)
+                y.append(mean)
+            # plt.figure()
+            plt.plot(x,y,alpha=0.5,label=Humid_Arid)
+            plt.scatter(x,y)
+        plt.legend()
+        plt.show()
+
 def main():
-    Plot_line().run()
+    # Plot_line().run()
+    Frequency().run()
 
 if __name__ == '__main__':
     main()
