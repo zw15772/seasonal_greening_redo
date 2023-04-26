@@ -8,6 +8,8 @@ this_script_root = '/Users/liyang/Downloads/earlier_late/'
 
 class Amplifying_Stablilizing:
     def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = \
+            T.mk_class_dir('Amplifying_Stablilizing', this_script_root, mode=2)
         self.datadir = join(this_script_root, 'data')
         self.models_list = self.__get_model_list()
         self.period_list = ['during_early_peak', 'during_late']
@@ -17,10 +19,11 @@ class Amplifying_Stablilizing:
     def run(self):
 
         # self.class_tif()
-        self.plot_tif()
+        # self.plot_tif()
+        self.ratio_statistic()
 
     def class_tif(self):
-        outdir = join(this_script_root,'tif')
+        outdir = join(self.this_class_tif,'class_tif')
         T.mk_dir(outdir)
         class_label_dict = {'stablilizing': -1, 'weak amplifying': 0, 'amplifying': 1}
         for model in tqdm(self.models_list):
@@ -50,25 +53,45 @@ class Amplifying_Stablilizing:
 
 
     def plot_tif(self):
-        fdir = join(this_script_root, 'tif')
-        outdir = join(this_script_root, 'png')
+        fdir = join(self.this_class_tif,'class_tif')
+        outdir = join(self.this_class_png, 'plot_tif')
         T.mk_dir(outdir)
         color_list = ['purple', '#FFFFCC', 'g']
         cmap = T.cmap_blend(color_list)
         plt.register_cmap(name='mycmap', cmap=cmap)
         for f in T.listdir(fdir):
-            # if not 'MODIS' in f:
-            #     continue
+            if not 'MODIS' in f:
+                continue
             # if not 'LAI3g' in f:
             #     continue
-            if not 'Trendy_ensemble' in f:
-                continue
+            # if not 'Trendy_ensemble' in f:
+            #     continue
             fpath = join(fdir, f)
             Plot().plot_ortho(fpath,cmap='mycmap',vmin=-1,vmax=1)
             outf = join(outdir, f.replace('.tif', '.png'))
             plt.savefig(outf, dpi=300)
             plt.close()
         T.open_path_and_file(outdir)
+
+    def ratio_statistic(self):
+        fdir = join(self.this_class_tif,'class_tif')
+        all_dict = {}
+        for f in T.listdir(fdir):
+            fpath = join(fdir, f)
+            dict_i = DIC_and_TIF().spatial_tif_to_dic(fpath)
+            key = f.replace('.tif', '')
+            all_dict[key] = dict_i
+        df = T.spatial_dics_to_df(all_dict)
+        df = df.dropna()
+        spatial_dict = {}
+        for i,row in df.iterrows():
+            pix = row['pix']
+            spatial_dict[pix] = 1
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        plt.imshow(arr,interpolation='nearest',cmap='gray')
+        plt.show()
+
+        pass
 
     def __get_model_list(self):
         models_list = []
