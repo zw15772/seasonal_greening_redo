@@ -86,8 +86,11 @@ class Amplifying_Stablilizing:
     def run(self):
 
         # self.class_tif()
+        # self.class_tif_old()
         # self.plot_tif()
         # self.ratio_statistic()
+        # self.ratio_statistic_old_intersect()
+        # self.ratio_statistic_old()
         # self.individual_model_ratio()
         # self.ratio_statistic_all_area()
         self.plot_ratio()
@@ -186,6 +189,36 @@ class Amplifying_Stablilizing:
             outf = join(outdir, f'{model}.tif')
             DIC_and_TIF().arr_to_tif(arr, outf)
 
+    def class_tif_old(self):
+        outdir = join(self.this_class_tif,'class_tif_old')
+        fdir = join(self.datadir,'trend')
+        T.mk_dir(outdir)
+        class_label_dict = {'stablilizing': -1, 'weak amplifying': 0, 'amplifying': 1}
+        for model in tqdm(self.models_list):
+            early_peak_f = join(fdir, f'during_early_peak_{model}_trend.tif')
+            late_f = join(fdir, f'during_late_{model}_trend.tif')
+            early_peak_dict = DIC_and_TIF().spatial_tif_to_dic(early_peak_f)
+            late_dict = DIC_and_TIF().spatial_tif_to_dic(late_f)
+            class_dict = {}
+            class_dict_num = {}
+            for pix in early_peak_dict:
+                early_peak = early_peak_dict[pix]
+                late = late_dict[pix]
+                if not early_peak > 0:
+                    continue
+                if late <= 0:
+                    class_i = 'stablilizing'
+                else:
+                    if early_peak >= late:
+                        class_i = 'weak amplifying'
+                    else:
+                        class_i = 'amplifying'
+                class_dict[pix] = class_i
+                class_dict_num[pix] = class_label_dict[class_i]
+            arr = DIC_and_TIF().pix_dic_to_spatial_arr(class_dict_num)
+            outf = join(outdir, f'{model}.tif')
+            DIC_and_TIF().arr_to_tif(arr, outf)
+
 
     def plot_tif(self):
         fdir = join(self.this_class_tif,'class_tif')
@@ -212,6 +245,7 @@ class Amplifying_Stablilizing:
         outdir = join(self.this_class_arr,'ratio_statistic')
         T.mkdir(outdir)
         fdir = join(self.this_class_tif,'class_tif')
+        # fdir = join(self.this_class_tif,'class_tif_old')
         all_dict = {}
         for f in T.listdir(fdir):
             fpath = join(fdir, f)
@@ -235,7 +269,7 @@ class Amplifying_Stablilizing:
         class_label_dict = T.reverse_dic(class_label_dict)
         T.print_head_n(df)
         # cols = df.columns.tolist()
-        cols = ['LAI3g','MODIS_LAI','Trendy_ensemble']
+        cols = ['MODIS_LAI','LAI3g','Trendy_ensemble']
         all_results_dict = {}
         for HI in HI_list:
             df_HI = df[df['HI_reclass'] == HI]
@@ -251,6 +285,139 @@ class Amplifying_Stablilizing:
                 total = 0
                 for pix in spatial_dict:
                     val_i = spatial_dict[pix]
+                    # if val_i == -2 or val_i == -3:
+                    #     continue
+                    class_i = class_label_dict[val_i][0]
+                    # print(class_i)
+                    count_dict[class_i] += 1
+                    total += 1
+                for class_i in count_dict:
+                    count_dict[class_i] = count_dict[class_i]/total * 100
+                key_i = f'{HI}_{col}'
+                all_results_dict[key_i] = count_dict
+        df = pd.DataFrame(all_results_dict)
+        outf = join(outdir, 'ratio_statistic.df')
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+        T.open_path_and_file(outdir)
+        # T.print_head_n(df)
+        # exit()
+
+    def ratio_statistic_old(self):
+        # water and energy limited
+        outdir = join(self.this_class_arr,'ratio_statistic_old')
+        T.mkdir(outdir)
+        # fdir = join(self.this_class_tif,'class_tif')
+        fdir = join(self.this_class_tif,'class_tif_old')
+        all_dict = {}
+        for f in T.listdir(fdir):
+            fpath = join(fdir, f)
+            dict_i = DIC_and_TIF().spatial_tif_to_dic(fpath)
+            key = f.replace('.tif', '')
+            all_dict[key] = dict_i
+        df = T.spatial_dics_to_df(all_dict)
+        # print(df<-1)
+        df = df.dropna()
+        # T.print_head_n(df)
+        # exit()
+        df = Dataframe_Func(df).df
+        HI_list = ['Humid','Dryland']
+        class_label_dict = {
+            'strong stabilizing': -1,
+            'weak stabilizing': 0,
+            'amplifying': 1,
+            # 'no effect': -2,
+            # 'other': -3,
+        }
+        class_label_dict = T.reverse_dic(class_label_dict)
+        T.print_head_n(df)
+        # cols = df.columns.tolist()
+        cols = ['MODIS_LAI','LAI3g','Trendy_ensemble']
+        all_results_dict = {}
+        for HI in HI_list:
+            df_HI = df[df['HI_reclass'] == HI]
+            for col in cols:
+                spatial_dict = T.df_to_spatial_dic(df_HI,col)
+                count_dict = {
+                    'strong stabilizing':0,
+                    'weak stabilizing':0,
+                    'amplifying':0,
+                    # 'other':0,
+                    # 'no effect':0,
+                }
+                total = 0
+                for pix in spatial_dict:
+                    val_i = spatial_dict[pix]
+                    # if val_i == -2 or val_i == -3:
+                    #     continue
+                    class_i = class_label_dict[val_i][0]
+                    # print(class_i)
+                    count_dict[class_i] += 1
+                    total += 1
+                for class_i in count_dict:
+                    count_dict[class_i] = count_dict[class_i]/total * 100
+                key_i = f'{HI}_{col}'
+                all_results_dict[key_i] = count_dict
+        df = pd.DataFrame(all_results_dict)
+        outf = join(outdir, 'ratio_statistic.df')
+        T.save_df(df, outf)
+        T.df_to_excel(df, outf)
+        T.open_path_and_file(outdir)
+        # T.print_head_n(df)
+        # exit()
+
+    def ratio_statistic_old_intersect(self):
+        # water and energy limited
+        outdir = join(self.this_class_arr,'ratio_statistic_old_intersect')
+        T.mkdir(outdir)
+        # fdir = join(self.this_class_tif,'class_tif')
+        fdir = join(self.this_class_tif,'class_tif_old')
+        selected_cols = ['pix','MODIS_LAI','LAI3g','Trendy_ensemble']
+        all_dict = {}
+        for f in T.listdir(fdir):
+            fpath = join(fdir, f)
+            dict_i = DIC_and_TIF().spatial_tif_to_dic(fpath)
+            key = f.replace('.tif', '')
+            all_dict[key] = dict_i
+        df = T.spatial_dics_to_df(all_dict)
+        df = df[selected_cols]
+
+        # print(df<-1)
+        df = df.dropna()
+        # print(df)
+        # exit()
+        T.print_head_n(df)
+        # exit()
+        df = Dataframe_Func(df).df
+        HI_list = ['Humid','Dryland']
+        class_label_dict = {
+            'strong stabilizing': -1,
+            'weak stabilizing': 0,
+            'amplifying': 1,
+            # 'no effect': -2,
+            # 'other': -3,
+        }
+        class_label_dict = T.reverse_dic(class_label_dict)
+        T.print_head_n(df)
+        # cols = df.columns.tolist()
+        cols = ['MODIS_LAI','LAI3g','Trendy_ensemble']
+        all_results_dict = {}
+        for HI in HI_list:
+            df_HI = df[df['HI_reclass'] == HI]
+            for col in cols:
+                spatial_dict = T.df_to_spatial_dic(df_HI,col)
+                count_dict = {
+                    'strong stabilizing':0,
+                    'weak stabilizing':0,
+                    'amplifying':0,
+                    # 'other':0,
+                    # 'no effect':0,
+                }
+                total = 0
+                for pix in spatial_dict:
+                    val_i = spatial_dict[pix]
+                    # if val_i == -2 or val_i == -3:
+                    #     continue
                     class_i = class_label_dict[val_i][0]
                     # print(class_i)
                     count_dict[class_i] += 1
@@ -351,11 +518,12 @@ class Amplifying_Stablilizing:
             -1:'strong stablilizing',
             0:'weak stablilizing',
             1:'amplifying',
-            -2:'other'
+            # -2:'other'
         }
         T.print_head_n(df)
         # cols = df.columns.tolist()
-        cols = ['LAI3g','MODIS_LAI','Trendy_ensemble']
+        # cols = ['LAI3g','MODIS_LAI','Trendy_ensemble']
+        cols = ['MODIS_LAI','LAI3g','Trendy_ensemble']
         all_results_dict = {}
         for col in cols:
             spatial_dict = T.df_to_spatial_dic(df,col)
@@ -363,11 +531,13 @@ class Amplifying_Stablilizing:
                 'strong stablilizing':0,
                 'weak stablilizing':0,
                 'amplifying':0,
-                'other':0,
+                # 'other':0,
             }
             total = 0
             for pix in spatial_dict:
                 val_i = spatial_dict[pix]
+                if val_i == -2 or val_i == -3:
+                    continue
                 class_i = amp_stab_dict[val_i]
                 count_dict[class_i] += 1
                 total += 1
@@ -389,32 +559,49 @@ class Amplifying_Stablilizing:
     def plot_ratio(self):
         outdir = join(self.this_class_png,'ratio_statistic')
         T.mkdir(outdir)
-        fpath1 = join(self.this_class_arr,'ratio_statistic','ratio_statistic.df')
-        fpath2 = join(self.this_class_arr, 'individual_models/ratio_statistic.df')
+        # fpath1 = join(self.this_class_arr,'ratio_statistic','ratio_statistic.df')
+        fpath1 = join(self.this_class_arr,'ratio_statistic_old_intersect','ratio_statistic.df')
+        # fpath2 = join(self.this_class_arr, 'individual_models/ratio_statistic.df')
         df1 = T.load_df(fpath1)
-        df2 = T.load_df(fpath2)
-        df = pd.concat([df1,df2],axis=1)
+        df = df1
+        # df2 = T.load_df(fpath2)
+        # df = pd.concat([df1,df2],axis=1)
         # T.print_head_n(df)
         # exit()
         # T.print_head_n(df)
         HI_list = ['Humid', 'Dryland']
+        HI_list_rename = {
+            'Humid':'Energy-limited',
+            'Dryland':'Water-limited'
+        }
         # T.print_head_n(df)
         # cols = df.columns.tolist()
-        cols1 = ['LAI3g', 'MODIS_LAI', 'Trendy_ensemble']
+        # cols1 = ['LAI3g', 'MODIS_LAI', 'Trendy_ensemble']
+        cols1 = ['MODIS_LAI','LAI3g',  'Trendy_ensemble']
         cols2 = ['CABLE-POP_S2_lai', 'CLASSIC_S2_lai', 'CLM5',
                 'IBIS_S2_lai', 'ISAM_S2_LAI', 'ISBA-CTRIP_S2_lai',
                 'LPJ-GUESS_S2_lai', 'LPX-Bern_S2_lai', 'OCN_S2_lai',
                 'ORCHIDEE_S2_lai', 'ORCHIDEEv3_S2_lai', 'VISIT_S2_lai',
                 'YIBs_S2_Monthly_lai']
+        # color_dict = {
+        #     'LAI3g':'#1f77b4',
+        #     'MODIS_LAI':'#ff7f0e',
+        #     'Trendy_ensemble':'#2ca02c',
+        # }
         color_dict = {
-            'LAI3g':'#1f77b4',
-            'MODIS_LAI':'#ff7f0e',
-            'Trendy_ensemble':'#2ca02c',
+            'LAI3g':'g',
+            'MODIS_LAI':'r',
+            'Trendy_ensemble':'b',
         }
-        cols1.extend(cols2)
+
+        # cols1.extend(cols2)
         cols = cols1
         smp_stab_list = ['strong stabilizing','weak stabilizing','amplifying']
-
+        smp_stab_list_rename = {
+            'strong stabilizing':'Strong stabilization',
+            'weak stabilizing':'Weak stabilization',
+            'amplifying':'Amplification',
+            }
         for HI in HI_list:
             plt.figure(figsize=(18*centimeter_factor, 4*centimeter_factor))
             flag = 1
@@ -431,15 +618,19 @@ class Amplifying_Stablilizing:
                     x.append(col)
                     y.append(val_i)
                     color_list.append(color)
-                plt.bar(x,y,color=color_list)
-                plt.title(f'{HI} {smp_stab}')
+                plt.bar(x,y,color=color_list,)
+                colors = color_dict
+                labels = list(colors.keys())
+                handles = [plt.Rectangle((0, 0), 1, 1, color=colors[label]) for label in labels]
+                plt.title(f'{HI_list_rename[HI]}\n{smp_stab_list_rename[smp_stab]}')
                 plt.xticks([])
                 plt.ylim(0,85)
+            plt.legend(handles, labels)
             outf = join(outdir,f'{HI}.pdf')
-        # plt.show()
-            plt.savefig(outf)
-            plt.close()
-        T.open_path_and_file(outdir)
+        plt.show()
+            # plt.savefig(outf)
+            # plt.close()
+        # T.open_path_and_file(outdir)
 
 
     def plot_ratio_all_area(self):
