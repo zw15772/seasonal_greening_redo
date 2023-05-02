@@ -1,5 +1,6 @@
 # coding=utf-8
 import matplotlib.pyplot as plt
+import numpy as np
 from lytools import *
 import matplotlib as mpl
 
@@ -87,13 +88,15 @@ class Amplifying_Stablilizing:
 
         # self.class_tif()
         # self.class_tif_old()
+        # self.class_tif_old_intersect()
         # self.plot_tif()
+        self.plot_tif_individual_models()
         # self.ratio_statistic()
         # self.ratio_statistic_old_intersect()
         # self.ratio_statistic_old()
         # self.individual_model_ratio()
         # self.ratio_statistic_all_area()
-        self.plot_ratio()
+        # self.plot_ratio()
         # self.plot_ratio_all_area()
 
         pass
@@ -193,7 +196,7 @@ class Amplifying_Stablilizing:
         outdir = join(self.this_class_tif,'class_tif_old')
         fdir = join(self.datadir,'trend')
         T.mk_dir(outdir)
-        class_label_dict = {'stablilizing': -1, 'weak amplifying': 0, 'amplifying': 1}
+        class_label_dict = {'stablilizing': -1, 'weak amplifying': 0, 'amplifying': 1, 'other': -2, }
         for model in tqdm(self.models_list):
             early_peak_f = join(fdir, f'during_early_peak_{model}_trend.tif')
             late_f = join(fdir, f'during_late_{model}_trend.tif')
@@ -204,41 +207,166 @@ class Amplifying_Stablilizing:
             for pix in early_peak_dict:
                 early_peak = early_peak_dict[pix]
                 late = late_dict[pix]
-                if not early_peak > 0:
+                if np.isnan(early_peak):
                     continue
-                if late <= 0:
-                    class_i = 'stablilizing'
+                if not early_peak > 0:
+                    class_i = 'other'
                 else:
-                    if early_peak >= late:
-                        class_i = 'weak amplifying'
+                    if late <= 0:
+                        class_i = 'stablilizing'
                     else:
-                        class_i = 'amplifying'
+                        if early_peak >= late:
+                            class_i = 'weak amplifying'
+                        else:
+                            class_i = 'amplifying'
                 class_dict[pix] = class_i
                 class_dict_num[pix] = class_label_dict[class_i]
             arr = DIC_and_TIF().pix_dic_to_spatial_arr(class_dict_num)
             outf = join(outdir, f'{model}.tif')
             DIC_and_TIF().arr_to_tif(arr, outf)
 
+    def class_tif_old_intersect(self):
+        outdir = join(self.this_class_tif,'class_tif_old_intersect')
+        fdir = join(self.datadir,'trend')
+        T.mk_dir(outdir)
+        class_label_dict = {'stablilizing': -1, 'weak amplifying': 0, 'amplifying': 1, 'other': -2, }
+        all_dict = {}
+        for model in tqdm(self.models_list):
+            early_peak_f = join(fdir, f'during_early_peak_{model}_trend.tif')
+            late_f = join(fdir, f'during_late_{model}_trend.tif')
+            early_peak_dict = DIC_and_TIF().spatial_tif_to_dic(early_peak_f)
+            late_dict = DIC_and_TIF().spatial_tif_to_dic(late_f)
+            class_dict = {}
+            class_dict_num = {}
+            for pix in early_peak_dict:
+                early_peak = early_peak_dict[pix]
+                late = late_dict[pix]
+                if np.isnan(early_peak):
+                    continue
+                if not early_peak > 0:
+                    continue
+                else:
+                    if late <= 0:
+                        class_i = 'stablilizing'
+                    else:
+                        if early_peak >= late:
+                            class_i = 'weak amplifying'
+                        else:
+                            class_i = 'amplifying'
+                class_dict[pix] = class_i
+                class_dict_num[pix] = class_label_dict[class_i]
+            all_dict[model] = class_dict_num
+        df = T.spatial_dics_to_df(all_dict)
+        selected_cols = ['pix','MODIS_LAI','LAI3g','Trendy_ensemble']
+        df = df[selected_cols]
+        df = df.dropna()
+        # T.print_head_n(df)
+        # exit()
+        for col in selected_cols[1:]:
+            spatial_dict = T.df_to_spatial_dic(df,col)
+            arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+            outf = join(outdir, f'{col}.tif')
+            DIC_and_TIF().arr_to_tif(arr, outf)
+            # plt.imshow(arr)
+            # plt.show()
+        # T.open_path_and_file(outdir)
 
     def plot_tif(self):
-        fdir = join(self.this_class_tif,'class_tif')
-        outdir = join(self.this_class_png, 'plot_tif')
+        # fdir = join(self.this_class_tif,'class_tif')
+        fdir = join(self.this_class_tif,'class_tif_old')
+        # fdir = join(self.this_class_tif,'class_tif_old_intersect')
+        # outdir = join(self.this_class_png, 'plot_tif')
+        # outdir = join(self.this_class_png, 'plot_tif_old')
+        outdir = join(self.this_class_png, 'plot_tif_old_models')
+        # outdir = join(self.this_class_png, 'class_tif_old_intersect')
         T.mk_dir(outdir)
         color_list = ['#EDEDED','k', 'purple', '#FFFFCC', 'g']
         cmap = T.cmap_blend(color_list)
         # plt.register_cmap(name='mycmap', cmap=cmap)
         mpl.colormaps.register(name='mycmap',cmap=cmap)
-        product = ['MODIS', 'LAI3g', 'Trendy_ensemble']
+        # product = ['MODIS', 'LAI3g', 'Trendy_ensemble']
+        product = ['MODIS']
         for product_i in product:
             for f in T.listdir(fdir):
-                if not product_i in f:
+                # if not product_i in f:
+                #     continue
+                if not f.endswith('.tif'):
                     continue
                 fpath = join(fdir, f)
                 Plot().plot_ortho(fpath,cmap='mycmap',vmin=-3,vmax=1)
+                # plt.show()
                 outf = join(outdir, f.replace('.tif', '.png'))
                 plt.savefig(outf, dpi=300)
                 plt.close()
         T.open_path_and_file(outdir)
+
+    def plot_tif_individual_models(self):
+        model_list = ['CABLE-POP_S2_lai', 'CLASSIC_S2_lai', 'CLM5',
+                 'IBIS_S2_lai', 'ISAM_S2_LAI', 'ISBA-CTRIP_S2_lai',
+                 'LPJ-GUESS_S2_lai', 'LPX-Bern_S2_lai', 'OCN_S2_lai',
+                 'ORCHIDEE_S2_lai', 'ORCHIDEEv3_S2_lai', 'VISIT_S2_lai',
+                 'YIBs_S2_Monthly_lai']
+        model_list.sort()
+        ratio_dff = join(self.this_class_arr,'individual_models/ratio_statistic.df')
+        ratio_df = T.load_df(ratio_dff)
+        T.print_head_n(ratio_df)
+        HI_list = ['Dryland','Humid']
+        class_list = ['Strong Stabilization','Weak Stabilization','Amplifying']
+        # exit()
+
+        fig,axs = plt.subplots(5,6,figsize=(36*centimeter_factor,30*centimeter_factor))
+        # plt.show()
+
+        fdir = join(self.this_class_tif, 'class_tif_old')
+        outdir = join(self.this_class_png, 'plot_tif_old_models')
+        T.mk_dir(outdir)
+        color_list = ['#EDEDED', 'k', 'purple', '#FFFFCC', 'g']
+        cmap = T.cmap_blend(color_list)
+        # plt.register_cmap(name='mycmap', cmap=cmap)
+        mpl.colormaps.register(name='mycmap', cmap=cmap)
+        # product = ['MODIS', 'LAI3g', 'Trendy_ensemble']
+        # for f in T.listdir(fdir):
+        flag = 0
+        ploted_flag = []
+        for model in tqdm(model_list):
+            ax = axs.flatten()[flag]
+            ploted_flag.append(flag)
+            flag += 1
+            f = f'{model}.tif'
+            fpath = join(fdir, f)
+            Plot().plot_ortho(fpath, cmap='mycmap', vmin=-3, vmax=1,ax=ax,is_plot_colorbar=False)
+            ax.set_title(model,fontsize=8)
+            ax2 = axs.flatten()[flag]
+            ploted_flag.append(flag)
+            # ax2.axis('off')
+            col_name_Dryland = f'Dryland_{model}'
+            col_name_Humid = f'Humid_{model}'
+            vals_Dryland = ratio_df[col_name_Dryland].tolist()
+            vals_Humid = ratio_df[col_name_Humid].tolist()
+            Dryland_x = [1,3,5]
+            Dryland_x = np.array(Dryland_x)
+            Humid_x = np.array(Dryland_x) + 0.6
+            # ['#DD776F', '#BED6E2']
+            ax2.bar(Dryland_x,vals_Dryland,color='#DD776F',width=0.5)
+            ax2.bar(Humid_x,vals_Humid,color='#BED6E2',width=0.5)
+            ax2.set_ylim(0,80)
+            ax2.set_xlim(0.5,6.25)
+            if flag > 20:
+                ax2.set_xticks(Dryland_x+0.3,class_list,fontsize=8,rotation=30)
+            else:
+                ax2.set_xticks(Dryland_x+0.3,['']*3,fontsize=8,rotation=45)
+            ax2.set_ylabel('Ratio (%)',fontsize=8)
+            flag += 1
+            # plt.show()
+        unploted_flag = [i for i in range(30) if i not in ploted_flag]
+        for flag in unploted_flag:
+            ax = axs.flatten()[flag]
+            ax.axis('off')
+        outf = join(outdir, 'all_models.png')
+        plt.savefig(outf, dpi=300)
+        plt.close()
+        T.open_path_and_file(outdir)
+        pass
 
     def ratio_statistic(self):
         # water and energy limited
@@ -439,13 +567,21 @@ class Amplifying_Stablilizing:
     def individual_model_ratio(self):
         outdir = join(self.this_class_arr, 'individual_models')
         T.mkdir(outdir)
-        fdir = join(self.this_class_tif, 'individual_models')
+        fdir = join(self.this_class_tif, 'class_tif_old')
         all_dict = {}
+        cols = ['MODIS_LAI','LAI3g','Trendy_ensemble','LAI4g']
         key_list = []
         for f in tqdm(T.listdir(fdir)):
+            # print(f)
             fpath = join(fdir, f)
             dict_i = DIC_and_TIF().spatial_tif_to_dic(fpath)
             key = f.replace('.tif', '')
+            continue_flag = 0
+            for c in cols:
+                if c in key:
+                    continue_flag = 1
+            if continue_flag == 1:
+                continue
             key_list.append(key)
             all_dict[key] = dict_i
         # print(key_list)
@@ -458,8 +594,8 @@ class Amplifying_Stablilizing:
             'strong stabilizing': -1,
             'weak stabilizing': 0,
             'amplifying': 1,
-            'no effect': -2,
-            'other': -3,
+            # 'other': -2,
+            # 'other': -3,
         }
         class_label_dict = T.reverse_dic(class_label_dict)
         T.print_head_n(df)
@@ -475,13 +611,15 @@ class Amplifying_Stablilizing:
                     'strong stabilizing': 0,
                     'weak stabilizing': 0,
                     'amplifying': 0,
-                    'other': 0,
-                    'no effect':0
+                    # 'other': 0,
+                    # 'no effect':0
                 }
                 total = 0
                 for pix in spatial_dict:
                     val_i = spatial_dict[pix]
                     if np.isnan(val_i):
+                        continue
+                    if val_i == -2 or val_i == -3:
                         continue
                     # print(val_i)
                     class_i = class_label_dict[val_i][0]
@@ -492,6 +630,22 @@ class Amplifying_Stablilizing:
                 key_i = f'{HI}_{col}'
                 all_results_dict[key_i] = count_dict
         df = pd.DataFrame(all_results_dict)
+
+        # cols = df.columns.tolist()
+        # 'Humid_LPJ-GUESS_S2_lai'
+        class_list = ['strong stabilizing', 'weak stabilizing', 'amplifying']
+        for HI in HI_list:
+            class_i_mean = []
+            for class_i in class_list:
+                vals = []
+                for c in cols:
+                    col = f'{HI}_{c}'
+                    val_i = df[col][class_i]
+                    vals.append(val_i)
+                vals_mean = np.nanmean(vals)
+                print(f'{HI}_{class_i}:{vals_mean}')
+                class_i_mean.append(vals_mean)
+            df[f'{HI}_mean'] = class_i_mean
         outf = join(outdir, 'ratio_statistic.df')
         T.save_df(df, outf)
         T.df_to_excel(df, outf)
@@ -627,10 +781,10 @@ class Amplifying_Stablilizing:
                 plt.ylim(0,85)
             plt.legend(handles, labels)
             outf = join(outdir,f'{HI}.pdf')
-        plt.show()
-            # plt.savefig(outf)
-            # plt.close()
-        # T.open_path_and_file(outdir)
+        # plt.show()
+            plt.savefig(outf)
+            plt.close()
+        T.open_path_and_file(outdir)
 
 
     def plot_ratio_all_area(self):
@@ -708,9 +862,65 @@ class Amplifying_Stablilizing:
 
         return models_list
 
+class Aridity_index:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = \
+            T.mk_class_dir('Aridity_index', this_script_root, mode=2)
+        pass
+
+    def run(self):
+        # self.AI()
+        self.plot_AI()
+        pass
+
+    def AI(self):
+        spatial_dict = self.P_PET_ratio()
+        arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict)
+        arr[arr>=0.65] = 1
+        arr[arr<0.65] = 0
+        outdir = join(self.this_class_arr,'AI_class')
+        T.mk_dir(outdir)
+        outf = join(outdir,'AI_class.tif')
+        DIC_and_TIF().arr_to_tif(arr,outf)
+
+        pass
+
+    def plot_AI(self):
+        fpath = join(self.this_class_arr,'AI_class','AI_class.tif')
+        outdir = join(self.this_class_png,'AI_class')
+        T.mk_dir(outdir)
+        outf = join(outdir,'AI_class.png')
+        color_list = ['#DD776F', '#BED6E2']
+        cmap = T.cmap_blend(color_list)
+        # plt.register_cmap(name='mycmap', cmap=cmap)
+        mpl.colormaps.register(name='mycmap', cmap=cmap)
+        Plot().plot_ortho(fpath,vmin=0,vmax=1,cmap='mycmap')
+        plt.show()
+        pass
+
+    def P_PET_ratio(self):
+        fdir = join(data_root,'aridity_P_PET_dic')
+        # fdir = P_PET_fdir
+        dic = T.load_npy_dir(fdir)
+        dic_long_term = {}
+        for pix in dic:
+            vals = dic[pix]
+            vals = np.array(vals)
+            vals = T.mask_999999_arr(vals,warning=False)
+            vals[vals == 0] = np.nan
+            if len(vals) == 0:
+                continue
+            if np.isnan(np.nanmean(vals)):
+                continue
+            vals = T.drop_n_std(vals)
+            long_term_vals = np.nanmean(vals)
+            dic_long_term[pix] = long_term_vals
+        return dic_long_term
 
 def main():
-    Amplifying_Stablilizing().run()
+    # Amplifying_Stablilizing().run()
+    Aridity_index().run()
 
     pass
 
