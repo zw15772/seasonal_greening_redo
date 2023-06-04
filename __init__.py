@@ -61,13 +61,12 @@ from matplotlib.colors import LogNorm
 #     from jenkspy import JenksNaturalBreaks
 import scipy.io
 from scipy.stats import kruskal
-import pingouin as pg
 import psutil
 import plotly.graph_objs as go
 
 # this_root = '/Volumes/SSD_sumsang/project_greening/'
-this_root = '/Volumes/SSD1T/seasonal_greening/'
-# this_root = '/Volumes/SSD_sumsang/project_greening_redo/'
+# this_root = '/Volumes/NVME2T/seasonal_greening/'
+this_root = '/Volumes/NVME2T/greening_project_redo/'
 data_root = this_root + 'data/'
 results_root = this_root + 'result/'
 temporary_root = this_root + 'temporary/'
