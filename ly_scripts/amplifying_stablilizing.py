@@ -76,11 +76,11 @@ class Dataframe_Func:
 
 class Amplifying_Stablilizing:
     def __init__(self):
-        self.this_class_arr, self.this_class_tif, self.this_class_png = \
-            T.mk_class_dir('Amplifying_Stablilizing', this_script_root, mode=2)
-        self.datadir = join(this_script_root, 'data')
-        self.models_list = self.__get_model_list()
-        self.period_list = ['during_early_peak', 'during_late']
+        # self.this_class_arr, self.this_class_tif, self.this_class_png = \
+        #     T.mk_class_dir('Amplifying_Stablilizing', this_script_root, mode=2)
+        # self.datadir = join(this_script_root, 'data')
+        # self.models_list = self.__get_model_list()
+        # self.period_list = ['during_early_peak', 'during_late']
 
         pass
 
@@ -90,7 +90,9 @@ class Amplifying_Stablilizing:
         # self.class_tif_old()
         # self.class_tif_old_intersect()
         # self.plot_tif()
-        self.plot_tif_individual_models()
+        # self.modify_tif_230617()
+        self.plot_tif_230617()
+        # self.plot_tif_individual_models()
         # self.ratio_statistic()
         # self.ratio_statistic_old_intersect()
         # self.ratio_statistic_old()
@@ -298,6 +300,50 @@ class Amplifying_Stablilizing:
                 outf = join(outdir, f.replace('.tif', '.png'))
                 plt.savefig(outf, dpi=300)
                 plt.close()
+        T.open_path_and_file(outdir)
+
+
+    def modify_tif_230617(self):
+        # fdir = '/Users/liyang/Desktop/wen_figure/update_Figures/long_trends_seasonal_feedback/LAI3g_MCD_2003_2018'
+        fdir = '/Users/liyang/Desktop/wen_figure/update_Figures/long_trends_seasonal_feedback/2003-2023'
+        # outdir = '/Users/liyang/Desktop/wen_figure/update_Figures/long_trends_seasonal_feedback/LAI3g_MCD_2003_2018_modify'
+        outdir = '/Users/liyang/Desktop/wen_figure/update_Figures/long_trends_seasonal_feedback/2003-2023_modify'
+        T.mk_dir(outdir)
+
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            fpath = join(fdir, f)
+            arr = DIC_and_TIF().spatial_tif_to_arr(fpath)
+            arr[arr==-2] = np.nan
+            outf = join(outdir, f)
+            DIC_and_TIF().arr_to_tif(arr, outf)
+
+
+        pass
+
+    def plot_tif_230617(self):
+        # fdir = join(self.this_class_tif,'class_tif')
+        # fdir = '/Users/liyang/Desktop/wen_figure/update_Figures/long_trends_seasonal_feedback/LAI3g_MCD_2003_2018_modify'
+        fdir = '/Users/liyang/Desktop/wen_figure/update_Figures/long_trends_seasonal_feedback/2003-2023_modify'
+        # outdir = '/Users/liyang/Desktop/wen_figure/update_Figures/long_trends_seasonal_feedback/LAI3g_MCD_2003_2018_png'
+        outdir = '/Users/liyang/Desktop/wen_figure/update_Figures/long_trends_seasonal_feedback/2003-2023_png'
+        # outdir = join(self.this_class_png, 'class_tif_old_intersect')
+        T.mk_dir(outdir)
+        color_list = ['purple', '#FFFFCC', 'g']
+        cmap = T.cmap_blend(color_list)
+        # plt.register_cmap(name='mycmap', cmap=cmap)
+        mpl.colormaps.register(name='mycmap',cmap=cmap)
+        # product = ['MODIS', 'LAI3g', 'Trendy_ensemble']
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            fpath = join(fdir, f)
+            Plot().plot_ortho(fpath,cmap='mycmap',vmin=-1,vmax=1)
+            # plt.show()
+            outf = join(outdir, f.replace('.tif', '.png'))
+            plt.savefig(outf, dpi=300)
+            plt.close()
         T.open_path_and_file(outdir)
 
     def plot_tif_individual_models(self):
@@ -919,8 +965,8 @@ class Aridity_index:
         return dic_long_term
 
 def main():
-    # Amplifying_Stablilizing().run()
-    Aridity_index().run()
+    Amplifying_Stablilizing().run()
+    # Aridity_index().run()
 
     pass
 
