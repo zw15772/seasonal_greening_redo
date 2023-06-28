@@ -340,6 +340,7 @@ class Amplifying_Stablilizing:
                 continue
             fpath = join(fdir, f)
             Plot().plot_ortho(fpath,cmap='mycmap',vmin=-1,vmax=1)
+            plt.title(f.replace('.tif',''))
             # plt.show()
             outf = join(outdir, f.replace('.tif', '.png'))
             plt.savefig(outf, dpi=300)
