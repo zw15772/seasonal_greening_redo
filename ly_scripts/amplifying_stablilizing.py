@@ -909,6 +909,105 @@ class Amplifying_Stablilizing:
 
         return models_list
 
+
+class All_TRENDY_Models:
+
+    def __init__(self):
+        self.datadir = '/Users/liyang/Desktop/2003-2023_ly'
+        pass
+
+    def run(self):
+        # self.agreement()
+        self.ensemble()
+        pass
+
+    def agreement(self):
+        fdir = join(self.datadir,'tif')
+        outdir = join(self.datadir,'result/agreement')
+        T.mkdir(outdir,force=True)
+        all_dict = {}
+        model_name_list = []
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            model_name = f.replace('.tif','')
+            model_name_list.append(model_name)
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(join(fdir,f))
+            all_dict[model_name] = spatial_dict
+        df = T.spatial_dics_to_df(all_dict)
+        # T.print_head_n(df)
+        type_list = []
+        unique_vals = {}
+        len_vals = {}
+        for i,row in tqdm(df.iterrows(),total=len(df)):
+            model_vals = row[model_name_list].tolist()
+            len_vals[len(model_vals)] = ''
+            for v in model_vals:
+                if np.isnan(v):
+                    continue
+                unique_vals[v] = ''
+
+        for uv in unique_vals:
+            spatial_dict_i = {}
+            outf = join(outdir,f'{uv}.tif')
+            for i,row in tqdm(df.iterrows(),total=len(df),desc=f'{uv}'):
+                model_vals = row[model_name_list].tolist()
+                v_num = model_vals.count(uv)
+                ratio = v_num/len(model_vals)
+                pix = row['pix']
+                spatial_dict_i[pix] = ratio
+            DIC_and_TIF().pix_dic_to_tif(spatial_dict_i,outf)
+            # arr = DIC_and_TIF().pix_dic_to_spatial_arr(spatial_dict_i)
+            # plt.figure(figsize=(18*centimeter_factor, 18*centimeter_factor))
+            # plt.imshow(arr,interpolation='nearest',cmap='jet')
+            # plt.title(f'{uv}')
+            # plt.colorbar()
+
+        # plt.show()
+
+    def ensemble(self):
+        fdir = join(self.datadir, 'tif')
+        outdir = join(self.datadir, 'result/ensemble')
+        T.mkdir(outdir, force=True)
+        all_dict = {}
+        model_name_list = []
+        for f in T.listdir(fdir):
+            if not f.endswith('.tif'):
+                continue
+            model_name = f.replace('.tif', '')
+            model_name_list.append(model_name)
+            spatial_dict = DIC_and_TIF().spatial_tif_to_dic(join(fdir, f))
+            all_dict[model_name] = spatial_dict
+        df = T.spatial_dics_to_df(all_dict)
+        # T.print_head_n(df)
+        type_list = []
+        unique_vals = {}
+        len_vals = {}
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            model_vals = row[model_name_list].tolist()
+            len_vals[len(model_vals)] = ''
+            for v in model_vals:
+                if np.isnan(v):
+                    continue
+                unique_vals[v] = ''
+        spatial_dict_ensemble = {}
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            model_vals = row[model_name_list].tolist()
+            pix = row['pix']
+            dict_i = {}
+            for uv in unique_vals:
+                count_num = model_vals.count(uv)
+                dict_i[uv] = count_num
+            dict_i_reverse = T.reverse_dic(dict_i)
+            keys = list(dict_i_reverse.keys())
+            max_num = max(keys)
+            vals = dict_i_reverse[max_num]
+            if len(vals) > 1:
+                continue
+            spatial_dict_ensemble[pix] = vals[0]
+        outf = join(outdir, f'ensemble.tif')
+        DIC_and_TIF().pix_dic_to_tif(spatial_dict_ensemble, outf)
+
 class Aridity_index:
 
     def __init__(self):
@@ -965,9 +1064,58 @@ class Aridity_index:
             dic_long_term[pix] = long_term_vals
         return dic_long_term
 
+class Temporary_test:
+
+    def __init__(self):
+        pass
+
+    def run(self):
+        self.plot_tif_individual_models()
+        pass
+
+    def plot_tif_individual_models(self):
+        # exit()
+
+        fig,axs = plt.subplots(5,6,figsize=(36*centimeter_factor,30*centimeter_factor))
+        # plt.show()
+
+        fdir = '/Volumes/NVME4T/temp_work_files/230924/LAI'
+        outdir = '/Volumes/NVME4T/temp_work_files/230924/LAI_png'
+        T.mk_dir(outdir)
+        color_list = ['#EDEDED', 'k', 'purple', '#FFFFCC', 'g']
+        cmap = T.cmap_blend(color_list)
+        # plt.register_cmap(name='mycmap', cmap=cmap)
+        mpl.colormaps.register(name='mycmap', cmap=cmap)
+        # product = ['MODIS', 'LAI3g', 'Trendy_ensemble']
+        # for f in T.listdir(fdir):
+        flag = 0
+        ploted_flag = []
+        for f in tqdm(T.listdir(fdir)):
+            ax = axs.flatten()[flag]
+            ploted_flag.append(flag)
+            flag += 1
+            fpath = join(fdir, f)
+            model = f.replace('.tif', '')
+            Plot().plot_ortho(fpath, cmap='mycmap', vmin=-3, vmax=1,ax=ax,is_plot_colorbar=False)
+            ax.set_title(model,fontsize=8)
+            # plt.show()
+        unploted_flag = [i for i in range(30) if i not in ploted_flag]
+        for flag in unploted_flag:
+            ax = axs.flatten()[flag]
+            ax.axis('off')
+        outf = join(outdir, 'all_models.png')
+        plt.savefig(outf, dpi=300)
+        plt.close()
+        T.open_path_and_file(outdir)
+        pass
+
+
+
 def main():
-    Amplifying_Stablilizing().run()
+    # Amplifying_Stablilizing().run()
     # Aridity_index().run()
+    # All_TRENDY_Models().run()
+    Temporary_test().run()
 
     pass
 
